@@ -27,6 +27,7 @@ optdepends=(
 )
 source=("vmp-$pkgver.tar.gz")
 sha256sums=('SKIP')
+options=('!debug')
 
 build() {
     cd "vmp-$pkgver"
