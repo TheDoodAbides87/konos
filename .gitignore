@@ -1,0 +1,21 @@
+build/
+build-*/
+.qmake.stash
+*.AppImage
+
+# Arch packaging output (makepkg / release script)
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.tar.gz
+packaging/arch/*.pkg.tar.*
+dist/
+
+# Design reference screenshots from the VLC community redesign (not ours to publish)
+VLC Redesign (Community)/
+
+# Left over from the OmaVideo AppImage packaging; delete these
+packaging/AppRun
+packaging/build-appimage.sh
+packaging/omavideo.desktop
+packaging/omavideo-omarchy.desktop
+resources/omavideo.svg

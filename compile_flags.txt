@@ -1,0 +1,13 @@
+-xc++
+-std=c++17
+-fPIC
+-I/usr/include/qt6/QtCore
+-I/usr/include/qt6/QtGui
+-I/usr/include/qt6/QtWidgets
+-I/usr/include/qt6/QtSvg
+-I/usr/include/qt6/QtOpenGLWidgets
+-I/usr/include/qt6/QtOpenGL
+-I/usr/include/qt6/QtConcurrent
+-I/usr/include/qt6
+-I/usr/include/vlc/plugins
+-Isrc
