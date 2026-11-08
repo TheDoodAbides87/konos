@@ -26,6 +26,16 @@ optdepends=(
     'libdvdcss: encrypted DVDs'
     'ffmpeg: subtitle timeline for subtitles inside videos'
     'ffmpegthumbnailer: faster video thumbnails'
+    'vlc-plugin-x264: Convert / Stream to H.264'
+    'vlc-plugin-x265: Convert to H.265'
+    'vlc-plugin-ogg: Convert to OGG files'
+    'vlc-plugin-theora: Convert to Theora video'
+    'vlc-plugin-vorbis: Convert to Ogg Vorbis'
+    'vlc-plugin-flac: Convert to FLAC'
+    'vlc-plugin-chromecast: Stream to a Chromecast'
+    'vlc-plugin-mdns: find Chromecasts on the network'
+    'vlc-plugin-zvbi: Open Capture Device (cameras, via v4l2)'
+    'vlc-plugins-extra: Open Capture Device (screen, X11 only)'
 )
 source=("konos-$pkgver.tar.gz")
 sha256sums=('SKIP')
