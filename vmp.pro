@@ -25,6 +25,9 @@ omarchy: DEFINES += VMP_OMARCHY
 SOURCES += \
     src/main.cpp \
     src/updatecheck.cpp \
+    src/netfeeds.cpp \
+    src/librarydialogs.cpp \
+    src/miniplayer.cpp \
     src/showpresets.cpp \
     src/subtitlecues.cpp \
     src/subtitletimeline.cpp \
@@ -60,6 +63,9 @@ SOURCES += \
 HEADERS += \
     src/appstyle.h \
     src/updatecheck.h \
+    src/netfeeds.h \
+    src/librarydialogs.h \
+    src/miniplayer.h \
     src/showpresets.h \
     src/subtitlecues.h \
     src/subtitletimeline.h \

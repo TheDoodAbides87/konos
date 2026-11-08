@@ -454,16 +454,39 @@ QWidget *SettingsOverlay::pageGeneral()
                                   : tr("You have %1.").arg(UpdateCheck::currentVersion()));
     updateStatus->setTextFormat(Qt::RichText);
     updateStatus->setOpenExternalLinks(true);
-    v->addWidget(checkNow, 0, Qt::AlignLeft);
+    auto *updateNow = new QPushButton(tr("Update Now"));
+    updateNow->setCursor(Qt::PointingHandCursor);
+    updateNow->setProperty("role", "accent");
+    updateNow->hide();
+    auto *buttons = new QHBoxLayout;
+    buttons->addWidget(checkNow);
+    buttons->addWidget(updateNow);
+    buttons->addStretch();
+    v->addLayout(buttons);
     v->addWidget(updateStatus);
+    connect(updateNow, &QPushButton::clicked, this, [updateNow, updateStatus] {
+        updateNow->setEnabled(false);
+        updateStatus->setText(tr("Downloading the update…"));
+        UpdateCheck::instance().installUpdate();
+    });
+    connect(&UpdateCheck::instance(), &UpdateCheck::progress, updateStatus,
+            [updateStatus](int percent) { updateStatus->setText(tr("Downloading the update… %1%").arg(percent)); });
+    connect(&UpdateCheck::instance(), &UpdateCheck::installed, updateStatus,
+            [updateNow, updateStatus](bool ok, const QString &error) {
+                updateNow->setEnabled(!ok);
+                updateNow->setVisible(!ok);
+                updateStatus->setText(ok ? tr("Update installed. It starts the next time you open VMP.")
+                                         : error.toHtmlEscaped());
+            });
     connect(checkNow, &QPushButton::clicked, this, [checkNow, updateStatus] {
         checkNow->setEnabled(false);
         updateStatus->setText(tr("Checking…"));
         UpdateCheck::instance().checkNow();
     });
     connect(&UpdateCheck::instance(), &UpdateCheck::finished, updateStatus,
-            [checkNow, updateStatus](bool newer, const QString &version, const QString &page, const QString &error, bool) {
+            [checkNow, updateNow, updateStatus](bool newer, const QString &version, const QString &page, const QString &error, bool) {
                 checkNow->setEnabled(true);
+                updateNow->setVisible(newer && UpdateCheck::canSelfUpdate() && !UpdateCheck::instance().appImageUrl().isEmpty());
                 if (!error.isEmpty())
                     updateStatus->setText(error.toHtmlEscaped());
                 else if (!newer)

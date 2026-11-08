@@ -110,6 +110,20 @@ void Library::load()
     }
     for (const auto &v : root.value("streams").toArray())
         m_streams << v.toString();
+    const QJsonObject names = root.value("names").toObject();
+    for (auto it = names.begin(); it != names.end(); ++it) {
+        const QJsonArray a = it.value().toArray();
+        m_names.insert(it.key(), {a.at(0).toString(), a.at(1).toString()});
+    }
+    for (const auto &v : root.value("channelLists").toArray())
+        m_channelLists << v.toString();
+    for (const auto &v : root.value("podcasts").toArray())
+        m_podcasts << v.toString();
+    for (const auto &v : root.value("pins").toArray()) {
+        const QJsonObject o = v.toObject();
+        m_pins << Pin{o.value("kind").toString(), o.value("target").toString(), o.value("name").toString(),
+                      o.value("section").toInt()};
+    }
     const QJsonObject meta = root.value("meta").toObject();
     for (auto it = meta.begin(); it != meta.end(); ++it) {
         const QJsonObject o = it.value().toObject();
@@ -138,6 +152,17 @@ void Library::save() const
         playlists.append(QJsonObject{{"name", name}, {"items", QJsonArray::fromStringList(m_playlists.value(name))}});
     root.insert("playlists", playlists);
     root.insert("streams", QJsonArray::fromStringList(m_streams));
+    root.insert("channelLists", QJsonArray::fromStringList(m_channelLists));
+    QJsonObject names;
+    for (auto it = m_names.begin(); it != m_names.end(); ++it) // only for what's still saved
+        if (m_streams.contains(it.key()) || m_channelLists.contains(it.key()) || m_podcasts.contains(it.key()))
+            names.insert(it.key(), QJsonArray{it->first, it->second});
+    root.insert("names", names);
+    root.insert("podcasts", QJsonArray::fromStringList(m_podcasts));
+    QJsonArray pins;
+    for (const Pin &p : m_pins)
+        pins.append(QJsonObject{{"kind", p.kind}, {"target", p.target}, {"name", p.name}, {"section", p.section}});
+    root.insert("pins", pins);
     QJsonObject meta;
     for (auto it = m_meta.begin(); it != m_meta.end(); ++it) {
         QJsonObject o;
@@ -383,6 +408,12 @@ void Library::renamePlaylist(const QString &from, const QString &to)
         return;
     m_playlists.insert(name, m_playlists.take(from));
     m_playlistOrder[m_playlistOrder.indexOf(from)] = name;
+    for (Pin &p : m_pins) // pinned playlists follow the new name
+        if (p.kind == "playlist" && p.target == from) {
+            p.target = name;
+            p.name = name;
+            emit pinsChanged();
+        }
     scheduleSave();
     emit playlistsChanged();
 }
@@ -391,6 +422,7 @@ void Library::deletePlaylist(const QString &name)
 {
     m_playlists.remove(name);
     m_playlistOrder.removeAll(name);
+    unpin("playlist", name);
     scheduleSave();
     emit playlistsChanged();
 }
@@ -413,12 +445,88 @@ void Library::removeFromPlaylist(const QString &name, int index)
     emit playlistsChanged();
 }
 
-void Library::addStream(const QString &url)
+void Library::addStream(const QString &url, const QString &name)
 {
     m_streams.removeAll(url);
     m_streams.prepend(url);
+    if (!name.isEmpty())
+        m_names[url].first = name;
     scheduleSave();
     emit streamsChanged();
+}
+
+void Library::addChannelList(const QString &url, const QString &name)
+{
+    m_channelLists.removeAll(url);
+    m_channelLists.prepend(url);
+    if (!name.isEmpty())
+        m_names[url].first = name;
+    scheduleSave();
+    emit streamsChanged();
+}
+
+void Library::removeChannelList(const QString &url)
+{
+    m_channelLists.removeAll(url);
+    scheduleSave();
+    emit streamsChanged();
+}
+
+void Library::addPodcast(const QString &feedUrl, const QString &name)
+{
+    if (!m_podcasts.contains(feedUrl))
+        m_podcasts.append(feedUrl);
+    if (!name.isEmpty())
+        m_names[feedUrl].first = name;
+    scheduleSave();
+    emit streamsChanged();
+}
+
+void Library::removePodcast(const QString &feedUrl)
+{
+    m_podcasts.removeAll(feedUrl);
+    scheduleSave();
+    emit streamsChanged();
+}
+
+void Library::setStreamInfo(const QString &url, const QString &name, const QString &image)
+{
+    const QPair<QString, QString> info{name, image.isEmpty() ? m_names.value(url).second : image};
+    if (m_names.value(url) == info)
+        return;
+    m_names.insert(url, info);
+    scheduleSave();
+}
+
+bool Library::isPinned(const QString &kind, const QString &target) const
+{
+    return m_pins.contains(Pin{kind, target, {}, 0});
+}
+
+void Library::pin(const Pin &pin)
+{
+    if (m_pins.contains(pin))
+        return;
+    m_pins.append(pin);
+    scheduleSave();
+    emit pinsChanged();
+}
+
+void Library::unpin(const QString &kind, const QString &target)
+{
+    if (m_pins.removeAll(Pin{kind, target, {}, 0}) == 0)
+        return;
+    scheduleSave();
+    emit pinsChanged();
+}
+
+void Library::movePin(int from, int to)
+{
+    if (from < 0 || from >= m_pins.size() || to < 0 || to >= m_pins.size() || from == to)
+        return;
+    m_pins.move(from, to);
+    scheduleSave();
+    emit pinsChanged();
 }
 
 void Library::removeStream(const QString &url)

@@ -20,6 +20,10 @@ static const QHash<QString, QVariant> &defaults()
         {"ui/clickPause", false},
         {"ui/thumbSize", 1},
         {"ui/sidePanel", true},
+        {"ui/miniPlayer", true},  // the player in a corner of the library while something plays
+        {"ui/miniCorner", 3},     // 0 top left, 1 top right, 2 bottom left, 3 bottom right
+        {"ui/libraryQueue", false}, // the queue beside the library
+        {"ui/viewModes", ""},
         {"ui/rightPanel", false},
         {"audio/device", ""},
         {"osd/showKeys", true},

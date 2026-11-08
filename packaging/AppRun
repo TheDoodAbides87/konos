@@ -1,0 +1,18 @@
+#!/bin/bash
+# AppImage entry point: use the bundled libVLC plugins and Qt libraries.
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="${APPDIR:-$HERE}"
+
+# Hooks written by linuxdeploy-plugin-qt (Qt plugin paths etc.)
+if [ -d "$HERE/apprun-hooks" ]; then
+    for hook in "$HERE"/apprun-hooks/*.sh; do
+        [ -e "$hook" ] && source "$hook"
+    done
+fi
+
+export VLC_PLUGIN_PATH="$HERE/usr/lib/vlc/plugins"
+export VLC_DATA_PATH="$HERE/usr/share/vlc"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/vlc${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export XDG_DATA_DIRS="$HERE/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+
+exec "$HERE/usr/bin/vmp" "$@"

@@ -6,6 +6,9 @@
 #include "musiceditors.h"
 #include "musicindex.h"
 #include "playerpanel.h"
+#include "librarydialogs.h"
+#include "miniplayer.h"
+#include "netfeeds.h"
 #include <QAbstractItemView>
 #include <QListView>
 #include <QListWidget>
@@ -240,12 +243,29 @@ void MainWindow::buildUi()
                 if (!newer || manual)
                     return;
                 m_updateToast->raise();
+                if (UpdateCheck::canSelfUpdate() && !UpdateCheck::instance().appImageUrl().isEmpty()) {
+                    m_updateToast->showAt(Toast::Bottom, tr("VMP %1 is out.").arg(version), tr("Update Now"), [this] {
+                        m_updateToast->showAt(Toast::Bottom, tr("Downloading the update…"), {}, {}, 600000);
+                        UpdateCheck::instance().installUpdate();
+                    }, 20000);
+                    return;
+                }
                 m_updateToast->showAt(Toast::Bottom,
                                       UpdateCheck::updatedByPacman()
                                           ? tr("VMP %1 is out. Update with: sudo pacman -Syu").arg(version)
                                           : tr("VMP %1 is out.").arg(version),
                                       tr("What's New"), [page] { QDesktopServices::openUrl(QUrl(page)); }, 15000);
             });
+    connect(&UpdateCheck::instance(), &UpdateCheck::progress, this, [this](int percent) {
+        m_updateToast->showAt(Toast::Bottom, tr("Downloading the update… %1%").arg(percent), {}, {}, 600000);
+    });
+    connect(&UpdateCheck::instance(), &UpdateCheck::installed, this, [this](bool ok, const QString &error) {
+        m_updateToast->raise();
+        if (ok)
+            m_updateToast->showAt(Toast::Bottom, tr("Update installed. It starts the next time you open VMP."), {}, {}, 10000);
+        else
+            m_updateToast->showAt(Toast::Bottom, error, {}, {}, 10000);
+    });
     if (qEnvironmentVariableIsEmpty("VMP_SCRIPT")) // not during scripted test runs
         QTimer::singleShot(5000, this, [] { UpdateCheck::instance().checkAutomatically(); });
     m_timeline = new SubtitleTimeline(m_player, m_videoArea);
@@ -261,6 +281,14 @@ void MainWindow::buildUi()
 
     m_panel = new PlayerPanel(m_player, body);
     m_panel->setFixedWidth(392);
+
+    m_mini = new MiniPlayer(m_player, m_library);
+    connect(m_mini, &MiniPlayer::expandRequested, this, &MainWindow::showPlayer);
+    connect(m_mini, &MiniPlayer::closeRequested, this, [this] {
+        m_miniDismissed = true;
+        updateMiniPlayer();
+    });
+    m_libraryQueue = prefs().flag("ui/libraryQueue");
 
     bodyLay->addWidget(m_rail);
     bodyLay->addWidget(m_navHolder);
@@ -292,6 +320,19 @@ void MainWindow::buildUi()
     connect(m_title, &TitleBar::closeRequested, this, &QWidget::close);
 
     connect(m_nav, &NavBar::sectionClicked, this, &MainWindow::showLibrary);
+    connect(m_nav, &NavBar::pinClicked, this, [this](const Library::Pin &pin) {
+        m_library->openPin(pin);
+        if (pin.kind != "file")
+            setView(View::Library);
+    });
+    connect(m_rail, &NavBar::pinClicked, this, [this](const Library::Pin &pin) {
+        if (pin.kind == "file") {
+            m_side->openPin(pin);
+            return;
+        }
+        openSidePanel(Section::Home); // opens the panel; the pin then picks what it shows
+        m_side->openPin(pin);
+    });
     connect(m_rail, &NavBar::sectionClicked, this, &MainWindow::openSidePanel);
     auto addMenu = [this](const QPoint &pos) {
         QMenu menu(this);
@@ -361,6 +402,8 @@ void MainWindow::buildUi()
             updateQueueViews();
         });
         connect(lv, &LibraryView::openNetworkRequested, this, &MainWindow::openNetwork);
+        connect(lv, &LibraryView::infoRequested, this,
+                [this](const QString &location) { (new MediaInfoOverlay(location, this))->open(); });
         connect(lv, &LibraryView::addFilesRequested, this, [this] {
             const QStringList files = FileDialogs::openFiles(
                 this, tr("Add to queue"), QStandardPaths::writableLocation(QStandardPaths::MoviesLocation),
@@ -466,8 +509,13 @@ void MainWindow::buildUi()
     connect(m_controls, &ControlBar::settingsClicked, this,
             [this] { m_quick->openAt(m_controls->settingsButton(), QuickSettings::PlaybackTab); });
     connect(m_controls, &ControlBar::queueClicked, this, [this] {
-        if (m_view != View::Player)
-            showPlayer();
+        if (m_view != View::Player) { // the queue beside the library
+            m_libraryQueue = !(m_libraryQueue && m_panel->tab() == PlayerPanel::QueueTab);
+            m_panel->setTab(PlayerPanel::QueueTab);
+            prefs().set("ui/libraryQueue", m_libraryQueue);
+            updateLayout();
+            return;
+        }
         openPlayerPanel(PlayerPanel::QueueTab);
     });
     connect(m_panel, &PlayerPanel::tabChanged, this, [this](PlayerPanel::Tab tab) {
@@ -493,8 +541,15 @@ void MainWindow::buildUi()
     });
     connect(m_settings, &SettingsOverlay::recordToggled, this, &MainWindow::toggleRecording);
 
-    connect(m_video, &VideoWidget::doubleClicked, this, [this] { m_pip ? setPip(false) : setFullscreen(!m_fullscreen); });
+    connect(m_video, &VideoWidget::doubleClicked, this, [this] {
+        if (m_view == View::Player)
+            m_pip ? setPip(false) : setFullscreen(!m_fullscreen);
+    });
     connect(m_video, &VideoWidget::clicked, this, [this](const QPoint &pos) {
+        if (m_view != View::Player) { // the mini player
+            showPlayer();
+            return;
+        }
         if (m_player->inDiscMenu()) {
             if (const auto p = m_video->framePoint(pos))
                 m_player->pointerOnVideo(*p, true);
@@ -509,6 +564,8 @@ void MainWindow::buildUi()
         menu->deleteLater();
     });
     connect(m_video, &VideoWidget::mouseMoved, this, [this](const QPoint &pos) {
+        if (m_view != View::Player)
+            return;
         overlayHover(m_video->mapTo(m_videoArea, pos));
         if (m_player->inDiscMenu())
             if (const auto p = m_video->framePoint(pos))
@@ -678,6 +735,10 @@ void MainWindow::connectPlayer()
         updateLayout();
     });
     connect(m_player, &Player::endReached, this, &MainWindow::onEndReached);
+    connect(m_player, &Player::mediaChanged, this, [this] {
+        m_miniDismissed = false; // the mini player comes back for the next item
+        updateMiniPlayer();
+    });
     connect(m_player, &Player::discMenuChanged, m_actMenuEnter, &QAction::setEnabled);
     connect(m_player, &Player::errorOccurred, this, [this](const QString &msg) {
         showError(msg);
@@ -750,8 +811,8 @@ void MainWindow::updateLayout()
     m_side->setVisible(player && m_sidebar && m_sidePanel && !chromeHidden);
     m_rail->setCurrent(m_side->section(), m_sidePanel);
     m_content->setCurrentWidget(player ? m_videoArea : static_cast<QWidget *>(m_library));
-    m_panel->setVisible(player && m_panelOpen && !chromeHidden);
-    m_controls->setQueueActive(player && m_panelOpen && m_panel->tab() == PlayerPanel::QueueTab);
+    m_panel->setVisible((player ? m_panelOpen : m_libraryQueue) && !chromeHidden);
+    m_controls->setQueueActive((player ? m_panelOpen : m_libraryQueue) && m_panel->tab() == PlayerPanel::QueueTab);
 
     if (m_fullscreen) {
         placeOverlayControls();
@@ -764,7 +825,31 @@ void MainWindow::updateLayout()
     }
     prefs().set("ui/sidePanel", m_sidebar);
     prefs().set("ui/rightPanel", m_panelOpen);
+    updateMiniPlayer();
     placeVideoOverlays();
+}
+
+// While browsing the library with something playing, the video moves into
+// the mini player; back in the player it returns.
+void MainWindow::updateMiniPlayer()
+{
+    if (!m_mini)
+        return;
+    const bool show = m_view == View::Library && m_player->hasMedia() && prefs().flag("ui/miniPlayer") &&
+                      !m_miniDismissed && !m_hideUi;
+    auto *videoLay = static_cast<QVBoxLayout *>(m_videoArea->layout());
+    if (show && m_video->parentWidget() != m_mini->videoHost()->parentWidget()) {
+        videoLay->removeWidget(m_video);
+        m_mini->videoHost()->addWidget(m_video);
+        m_video->show();
+    } else if (!show && m_video->parentWidget() != m_videoArea) {
+        m_mini->videoHost()->removeWidget(m_video);
+        videoLay->insertWidget(0, m_video);
+        m_video->show();
+    }
+    m_mini->setVisible(show);
+    if (show)
+        m_mini->place();
 }
 
 // "Use the subtitles' own styling" off: VLC 3 can only show SSA/ASS tracks
@@ -1171,6 +1256,11 @@ void MainWindow::playIndex(int index)
     m_defaultsFor.clear();
     m_player->open(m_current, start);
     ShowPresets::instance().afterOpen(); // …and its delays once it's open
+    // Files attached to this video in its folder's track settings.
+    if (const QString sub = ShowPresets::instance().attachedFile(m_current, true); !sub.isEmpty())
+        m_player->addSubtitleFile(sub);
+    if (const QString audio = ShowPresets::instance().attachedFile(m_current, false); !audio.isEmpty())
+        m_player->addAudioFile(audio);
     if (!Disc::isDiscLocation(m_current))
         library().addRecent(m_current);
     if (canResume && mode == 0) {
@@ -1301,15 +1391,14 @@ void MainWindow::openFolder()
 
 void MainWindow::openNetwork()
 {
-    bool ok = false;
-    const QString url = QInputDialog::getText(this, tr("Open network stream"),
-                                              tr("Enter a network URL (http, https, rtsp, udp, smb, …):"),
-                                              QLineEdit::Normal, QString(), &ok)
-                            .trimmed();
-    if (!ok || url.isEmpty())
-        return;
-    library().addStream(url);
-    playItems({url}, 0);
+    auto *dialog = new NetworkStreamOverlay(
+        this,
+        [this](const QStringList &urls, bool play) { play ? playItems(urls, 0) : enqueue(urls); },
+        [this](const QString &kind, const QString &url) {
+            showLibrary(Section::Network);
+            m_library->showNetwork((kind == "channels" ? "m3u:" : "rss:") + url);
+        });
+    dialog->open();
 }
 
 void MainWindow::openDisc()
@@ -1964,6 +2053,83 @@ void MainWindow::runDevScript()
                         QTest::mouseClick(view->viewport(), Qt::LeftButton, mods, r.center());
                     qInfo() << "selected" << view->selectionModel()->selectedIndexes().size();
                 }
+            } else if (cmd == "progress") { // progress:path,ratio (0..1)
+                library().setPosition(arg.section(',', 0, -2), qint64(arg.section(',', -1).toDouble() * 600000), 600000);
+            } else if (cmd == "search") { // search:text (typed into the library's search field)
+                for (auto *e : m_library->findChildren<QLineEdit *>())
+                    if (e->placeholderText() == tr("Search") && e->isVisible())
+                        e->setText(arg);
+            } else if (cmd == "probe") { // probe:url (what the network dialog decides a link is)
+                NetFeeds::instance().probe(arg, [arg](const QString &kind, const QString &title) {
+                    qInfo() << "probe" << arg << kind << title;
+                });
+            } else if (cmd == "selfupdate") { // selfupdate:url (download it over $APPIMAGE)
+                UpdateCheck::instance().setAppImageUrl(arg);
+                connect(&UpdateCheck::instance(), &UpdateCheck::installed, this,
+                        [](bool ok, const QString &e) { qInfo() << "installed" << ok << e; });
+                UpdateCheck::instance().installUpdate();
+            } else if (cmd == "viewmode") { // viewmode:0|1|2 (grid, list, details)
+                m_library->setViewMode(arg.toInt());
+            } else if (cmd == "sortset") { // sortset:key,desc (SortKey in libraryview.cpp)
+                m_library->setSort(arg.section(',', 0, 0).toInt(), arg.section(',', 1) == "1");
+            } else if (cmd == "network") { // network:path ("", radio, podcasts, m3u:<url>, rss:<url>)
+                showLibrary(Section::Network);
+                m_library->showNetwork(arg);
+            } else if (cmd == "newplaylist") { // newplaylist[:file,file]
+                (new NewPlaylistOverlay(arg.isEmpty() ? QStringList() : arg.split(','), {}, this))->open();
+            } else if (cmd == "netdialog") {
+                openNetwork();
+            } else if (cmd == "info") { // info:path
+                (new MediaInfoOverlay(arg, this))->open();
+            } else if (cmd == "foldertracks") { // foldertracks:folder,sub|audio
+                (new FolderTracksOverlay(arg.section(',', 0, -2), arg.section(',', -1) == "sub", this))->open();
+            } else if (cmd == "pinadd") { // pinadd:kind|target|name|section
+                const QStringList p = arg.split('|');
+                library().pin({p.value(0), p.value(1), p.value(2), p.value(3).toInt()});
+            } else if (cmd == "pinopen") { // pinopen:N (click the Nth pin in the sidebar)
+                const auto pins = library().pins();
+                if (arg.toInt() < pins.size())
+                    emit m_nav->pinClicked(pins.at(arg.toInt()));
+            } else if (cmd == "moremenu") { // print the library's ⋯ menu
+                for (auto *b : m_library->findChildren<IconButton *>())
+                    if (b->toolTip() == tr("More") && b->isVisible()) {
+                        onNextMenu([](QMenu *m) {
+                            for (QAction *a : m->actions())
+                                if (!a->isSeparator())
+                                    qInfo() << "menu item" << a->text();
+                            QTimer::singleShot(0, m, &QMenu::close);
+                        });
+                        b->click();
+                        break;
+                    }
+            } else if (cmd == "sortmenu") { // print the library's sort menu
+                for (auto *b : m_library->findChildren<IconButton *>())
+                    if (b->toolTip() == tr("Sort") && b->isVisible()) {
+                        onNextMenu([](QMenu *m) {
+                            for (QAction *a : m->actions())
+                                if (!a->isSeparator())
+                                    qInfo() << "menu item" << a->text() << (a->isChecked() ? "*" : "");
+                            QTimer::singleShot(0, m, &QMenu::close);
+                        });
+                        b->click();
+                        break;
+                    }
+            } else if (cmd == "libqueue") {
+                emit m_controls->queueClicked();
+            } else if (cmd == "rows") { // print the library's rows in order
+                if (auto *view = m_library->findChild<QListView *>("entries"))
+                    for (int i = 0; i < view->model()->rowCount(); ++i)
+                        qInfo() << "row" << i << view->model()->index(i, 0).data().toString();
+            } else if (cmd == "feedparse") { // feedparse:file (an RSS or M3U file on disk)
+                QFile f(arg);
+                f.open(QIODevice::ReadOnly);
+                const QByteArray data = f.readAll();
+                qInfo() << "channels" << NetFeeds::isChannelList(data) << "feed" << NetFeeds::isFeed(data);
+                const auto items = NetFeeds::isFeed(data) ? NetFeeds::parseRss(data).items : NetFeeds::parseM3u(data, QUrl::fromLocalFile(arg));
+                if (NetFeeds::isFeed(data))
+                    qInfo() << "title" << NetFeeds::parseRss(data).title << "image" << NetFeeds::parseRss(data).image;
+                for (const auto &it : items)
+                    qInfo() << "item" << it.title << it.url << it.detail << it.image;
             } else if (cmd == "tilebtn") { // tilebtn:row,hover|play|more[,menu shot path] (real input on a tile's buttons)
                 if (auto *view = m_library->findChild<QListView *>("entries")) {
                     const QModelIndex idx = view->model()->index(arg.section(',', 0, 0).toInt(), 0);

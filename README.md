@@ -2,11 +2,20 @@
 
 <img src="resources/vmp.svg" width="96" align="right" alt="VMP icon">
 
-A desktop media player for videos, music, discs and streams. It began as an
-implementation of the community **VLC redesign** (Figma mockups, not included
-here) and has grown into its own player. The interface is written from scratch
-in C++/Qt 6; playback, codecs, subtitles and all audio/video effects come from
-**libVLC 3**, the same engine VLC uses. VMP is not affiliated with VideoLAN.
+A desktop media player for videos, music, discs and streams.
+
+**VMP is an overhaul of VLC.** It is VLC media player with a new interface:
+playback, codecs, subtitles, discs, streaming and all audio/video effects come
+from **libVLC 3**, the engine inside VLC, made by the
+[VideoLAN](https://www.videolan.org/) project. What VMP replaces is the
+interface around it, written from scratch in C++/Qt 6. VMP is an independent
+project, not affiliated with or endorsed by VideoLAN.
+
+**The design is by [Juxtopposed](https://www.youtube.com/@juxtopposed)**,
+from the video [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324).
+VMP builds that redesign as a working player; each release works through a
+part of the video. Juxtopposed isn't involved in VMP, and any rough edges are
+VMP's own.
 
 The icon is a blocky traffic cone stood on its tip with a V cut into it;
 `packaging/make-icon.py` draws it, and `Theme::paintLogo()` draws the same
@@ -14,7 +23,7 @@ shape in the app.
 
 Licensed under the [MIT licence](LICENSE).
 
-**Version 0.4.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
+**Version 0.5.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's implemented
 
@@ -72,6 +81,14 @@ then `sudo pacman -Sy vmp`. From then on `sudo pacman -Syu` updates VMP with
 the rest of the system, and VMP tells you when a new version is out
 (Settings → General → Updates).
 
+### Other Linux distributions (AppImage)
+
+Download `VMP-<version>-x86_64.AppImage` from the
+[releases](https://github.com/TheDoodAbides87/vmp-releases/releases/latest),
+make it executable (`chmod +x`) and run it. It has libVLC and Qt inside. When a
+new version is out, VMP offers **Update Now**: it downloads the new AppImage
+over the old one, and the update starts the next time you open VMP.
+
 ### macOS and Windows
 
 Planned: a `.dmg` and a Windows installer (`.exe`) that update themselves from
@@ -94,16 +111,18 @@ make -j$(nproc)
 ### Arch package and releases
 
 ```sh
-./packaging/release.sh --build-only   # → dist/vmp-<version>-1-x86_64.pkg.tar.zst + repo database
+./packaging/release.sh --build-only   # → dist/: the pacman package + repo database, and the AppImage
 ./packaging/release.sh                # build, then publish to the releases repo (asks first)
+./packaging/build-appimage.sh         # just the AppImage → dist/VMP-<version>-x86_64.AppImage
 ```
 
-The package is built from the last commit (`git archive HEAD`) by
+The package is built from the last commit (`git archive HEAD`; with
+`--build-only` and uncommitted changes, from the working tree) by
 `packaging/arch/PKGBUILD`, with `CONFIG+=omarchy`. Publishing needs `gh`
 logged in; the release is not marked as a pre-release, because
 `releases/latest` (which pacman and the update check read) skips those. The
 version comes from `src/version.h`; keep `pkgver` in the PKGBUILD in step
-(`0.4.0` + `beta` → `0.4.0beta`, which pacman sorts before `0.4.0`).
+(`0.5.0` + `beta` → `0.5.0beta`, which pacman sorts before `0.5.0`).
 
 The source repository is private; built packages go to the public
 `TheDoodAbides87/vmp-releases` repository, which holds only releases, so the
@@ -148,7 +167,18 @@ Outside Omarchy it falls back to the stock dark look.
   build to VLC 3.0.x.
 - Developer screenshots: build with `qmake6 CONFIG+=devhooks` to enable the
   `VMP_SCRIPT` UI automation hook (not present in normal builds).
-- Design: started from the community VLC redesign (Figma). "VLC" and the VLC
-  cone are trademarks of VideoLAN; VMP is an independent project.
 - Settings and the library carry over from OmaVideo (and "VLC Redesign") on
   first launch.
+
+## Credits
+
+- **Design:** [Juxtopposed](https://www.youtube.com/@juxtopposed), in
+  [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324). The
+  mockups themselves are not included in this repository.
+- **Playback engine:** [VLC / libVLC](https://www.videolan.org/vlc/) by
+  VideoLAN and the VLC contributors (LGPL 2.1 or later). The AppImage bundles
+  libVLC and its plugins unchanged.
+- **Interface toolkit:** [Qt 6](https://www.qt.io/) (LGPL 3); tags are read and
+  written with [TagLib](https://taglib.org/).
+- "VLC" and the VLC cone are trademarks of VideoLAN. VMP is an independent
+  project and uses neither as its name or icon.

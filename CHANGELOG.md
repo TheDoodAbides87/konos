@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (beta) — 2026-11-07
+
+Group C of the changes from the redesign video: the library (10:27–13:44),
+and the move from OmaVideo to VMP.
 
 ### Renamed
 - **OmaVideo is now VMP (Vibes Media Player)**: it plays music as much as
@@ -9,18 +12,53 @@
   with a V cut into it.
 
 ### Added
+- **Sorting like the video** (10:42): Videos and other lists sort by
+  Unwatched First, Watched First, Newest First, Oldest First, Title A–Z or
+  Z–A (also Largest and Longest First). Every list remembers its order
+  between runs.
+- **Details view** (10:27): the view button now goes grid → list → details.
+  Details shows columns (length, size, modified, progress; for music artist,
+  album, year and length), and clicking a column title sorts by it.
+- **More in the ⋯ menu** (10:48): Add Files (copied into the open folder, or
+  added to the open playlist), Add Folder, **Edit Subtitle Tracks** and **Edit
+  Audio Tracks** for a show's folder, **Resync** and **Info**. The track
+  editors set the folder's own default track and attach a subtitle or audio
+  file to each episode; **Find Automatically** matches files by episode
+  number (S01E05, 1x05…) in the folder and the folders inside it, so a
+  `Subs/` folder just works.
+- **Info** on files and folders (right-click → Info…): size, length,
+  progress, tags, attached files; for folders, what's inside and how much is
+  watched.
+- **Mini player** (11:45): browsing the library while something plays shows
+  the video itself (or the cover) in a corner card. Click it to go back;
+  drag it to another corner; ✕ hides it until the next item. The **queue**
+  button now opens the queue beside the library instead of leaving it.
+- **New Playlist dialog** (13:19): a name and its files, dragged in from the
+  library or the file manager, or picked with Add Files / Add Folder.
+- **Sidebar pins** (13:35): right-click a folder, playlist, album, artist,
+  file, channel list or podcast → Pin to Sidebar; pins show under the
+  sections (and as icons in the player's rail). Right-click a pin to unpin
+  or move it.
+- **Network** (12:24, 13:04): **Open Network Stream** takes several addresses
+  at once and can save them as a playlist. A link to an M3U channel list
+  opens its channels (next/previous zaps through them); a podcast feed opens
+  its episodes. **Radio** lists popular internet radio stations from the
+  radio-browser.info community directory, with search; **Podcasts** searches
+  podcasts by name, lists your subscriptions and their episodes (which
+  resume where you left off).
 - **Update check**: once a day (Settings → General → Updates, on by default)
   VMP asks GitHub for the latest release and shows a notice when a newer one
-  is out; **Check Now** checks straight away.
+  is out; **Check Now** checks straight away. The AppImage updates itself
+  (**Update Now**); the Arch package updates with `pacman -Syu`.
 - **MIT licence.**
 
 ### Changed
-- **Packaging**: the Omarchy AppImage is replaced by an Arch package
-  (`packaging/arch/PKGBUILD`, built with the Omarchy theme support) published
-  as a pacman repository on the public releases repo, so `pacman -Syu` keeps VMP
-  up to date. `packaging/release.sh` builds and publishes it. The plain
-  AppImage is gone too; a macOS `.dmg` and a Windows installer are planned in
-  its place.
+- **Packaging**: the Omarchy build is now an Arch package
+  (`packaging/arch/PKGBUILD`) published as a pacman repository on the public
+  releases repo, so `pacman -Syu` keeps VMP up to date. Other Linux
+  distributions get the AppImage (`packaging/build-appimage.sh`), attached
+  to the same releases. `packaging/release.sh` builds and publishes both. A
+  macOS `.dmg` and a Windows installer are planned.
 
 ## 0.4.0 (beta) — 2026-11-03
 

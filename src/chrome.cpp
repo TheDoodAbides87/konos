@@ -9,6 +9,7 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
@@ -227,6 +228,17 @@ NavBar::NavBar(bool expanded, QWidget *parent) : QWidget(parent), m_expanded(exp
         m_items.append({s, b});
         connect(b, &IconButton::clicked, this, [this, s] { emit sectionClicked(s); });
     }
+    // Pinned folders, playlists, albums, lists… (right-click → Pin to Sidebar).
+    m_pinRule = hline(this);
+    v->addSpacing(4);
+    v->addWidget(m_pinRule);
+    v->addSpacing(4);
+    m_pins = new QVBoxLayout;
+    m_pins->setContentsMargins(0, 0, 0, 0);
+    m_pins->setSpacing(expanded ? 2 : 6);
+    v->addLayout(m_pins);
+    rebuildPins();
+    connect(&library(), &Library::pinsChanged, this, &NavBar::rebuildPins);
     auto *add = new IconButton("plus", this);
     if (expanded) {
         add->setLabel(tr("Add item"));
@@ -242,6 +254,59 @@ NavBar::NavBar(bool expanded, QWidget *parent) : QWidget(parent), m_expanded(exp
         setFixedWidth(212);
     else
         setFixedWidth(52);
+}
+
+void NavBar::rebuildPins()
+{
+    while (QLayoutItem *item = m_pins->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    const QList<Library::Pin> pins = library().pins();
+    m_pinRule->setVisible(!pins.isEmpty());
+    auto iconFor = [](const Library::Pin &p) -> QString {
+        if (p.kind == "folder")
+            return "folder";
+        if (p.kind == "playlist")
+            return "playlist";
+        if (p.kind == "channels")
+            return "stream";
+        if (p.kind == "podcast")
+            return "podcast";
+        if (p.kind == "network")
+            return p.target == "radio" ? "radio" : "podcast";
+        if (p.kind == "music") {
+            const QStringList parts = p.target.split('\n');
+            if (!parts.value(2).isEmpty() || parts.value(0) == "albums")
+                return "album";
+            return parts.value(0) == "artists" ? "artist" : parts.value(0) == "genres" ? "genre" : "song";
+        }
+        return Library::isAudioFile(p.target) ? "note" : Library::isUrl(p.target) ? "stream" : "film";
+    };
+    for (int i = 0; i < pins.size(); ++i) {
+        const Library::Pin pin = pins.at(i);
+        auto *b = new IconButton(iconFor(pin), this);
+        if (m_expanded) {
+            b->setLabel(QFontMetrics(font()).elidedText(pin.name, Qt::ElideRight, 150));
+            b->setFixedHeight(36);
+        } else {
+            b->setFixedSize(40, 40);
+        }
+        b->setToolTip(pin.name);
+        b->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(b, &IconButton::clicked, this, [this, pin] { emit pinClicked(pin); });
+        connect(b, &QWidget::customContextMenuRequested, this, [this, b, pin, i, count = pins.size()](const QPoint &pos) {
+            QMenu menu(this);
+            const QColor a = theme().accent();
+            menu.addAction(theme().icon("pin", a), tr("Unpin from Sidebar"), this, [pin] { library().unpin(pin.kind, pin.target); });
+            if (i > 0)
+                menu.addAction(theme().icon("chevron-up", a), tr("Move Up"), this, [i] { library().movePin(i, i - 1); });
+            if (i < count - 1)
+                menu.addAction(theme().icon("chevron-down", a), tr("Move Down"), this, [i] { library().movePin(i, i + 1); });
+            menu.exec(b->mapToGlobal(pos));
+        });
+        m_pins->addWidget(b);
+    }
 }
 
 void NavBar::setCurrent(Section section, bool highlight)

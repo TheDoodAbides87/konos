@@ -4,6 +4,10 @@
 #include "durations.h"
 #include "artistimages.h"
 #include "musiceditors.h"
+#include "librarydialogs.h"
+#include "filedialogs.h"
+#include "netfeeds.h"
+#include "showpresets.h"
 #include "prefs.h"
 #include "theme.h"
 #include "widgets.h"
@@ -17,7 +21,9 @@
 #include <QDir>
 #include <QDropEvent>
 #include <QMimeData>
+#include <QFile>
 #include <QFileInfo>
+#include <QPointer>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QKeyEvent>
@@ -30,6 +36,8 @@
 #include <QScrollBar>
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
+#include <QThread>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <random>
@@ -53,7 +61,26 @@ enum Roles {
 };
 
 // Sort keys. Which ones a view offers depends on what it lists.
-enum SortKey { SortDefault, SortName, SortDate, SortSize, SortYear, SortArtist, SortAlbum };
+enum SortKey { SortDefault, SortName, SortDate, SortSize, SortYear, SortArtist, SortAlbum,
+               SortUnwatched, SortWatched, SortDuration, SortProgress };
+
+// Watched state for sorting: 0 not started, 1 part watched, 2 watched.
+int watchState(const QModelIndex &idx)
+{
+    const double p = library().progress(idx.data(PathRole).toString());
+    return p >= 0.95 ? 2 : p > 0.01 ? 1 : 0;
+}
+
+qint64 lengthOf(const QModelIndex &idx)
+{
+    const auto kind = EntryKind(idx.data(KindRole).toInt());
+    if (kind != EntryKind::Video && kind != EntryKind::Audio)
+        return -1;
+    const QString path = idx.data(PathRole).toString();
+    if (const MusicIndex::Track *t = musicIndex().track(path); t && t->duration > 0)
+        return t->duration;
+    return Library::isUrl(path) ? -1 : Durations::instance().duration(path);
+}
 
 QString itemCount(int n) { return n == 1 ? QObject::tr("1 item") : QObject::tr("%1 items").arg(n); }
 
@@ -140,7 +167,31 @@ protected:
             const int c = collator().compare(ta, tb);
             return c ? c < 0 : natural();
         };
+        auto byName = [&] {
+            const int c = collator().compare(a.data(Qt::DisplayRole).toString(), b.data(Qt::DisplayRole).toString());
+            return c ? (desc ? c > 0 : c < 0) : natural();
+        };
         switch (key) {
+        case SortUnwatched:
+        case SortWatched: { // a fixed order (the menu never reverses it), names within each
+            static const int unwatchedFirst[] = {0, 1, 2}, watchedFirst[] = {2, 1, 0};
+            const int *rank = key == SortUnwatched ? unwatchedFirst : watchedFirst;
+            const int ra = rank[watchState(a)], rb = rank[watchState(b)];
+            if (ra != rb)
+                return desc ? ra > rb : ra < rb;
+            return byName(); // A–Z either way
+        }
+        case SortDuration: {
+            const qint64 la = lengthOf(a), lb = lengthOf(b);
+            if ((la < 0) != (lb < 0)) // unknown last
+                return desc ? la < 0 : lb < 0;
+            return la != lb ? la < lb : natural();
+        }
+        case SortProgress: {
+            const double pa = library().progress(a.data(PathRole).toString());
+            const double pb = library().progress(b.data(PathRole).toString());
+            return pa != pb ? pa < pb : natural();
+        }
         case SortYear: {
             const int ya = a.data(YearRole).toInt(), yb = b.data(YearRole).toInt();
             if ((ya == 0) != (yb == 0)) // unknown year last
@@ -290,6 +341,73 @@ QSize EntryDelegate::sizeHint(const QStyleOptionViewItem &, const QModelIndex &)
     return grid ? tileSize : QSize(200, 44);
 }
 
+static bool isWebImage(const QString &s)
+{
+    return s.startsWith("https://") || s.startsWith("http://");
+}
+
+QPixmap EntryDelegate::thumbnail(const QModelIndex &index) const
+{
+    const QString thumb = index.data(ThumbRole).toString();
+    const QString src = thumb.isEmpty() ? index.data(PathRole).toString() : thumb;
+    if (isWebImage(src))
+        return EntryKind(index.data(KindRole).toInt()) == EntryKind::Stream && thumb.isEmpty()
+                   ? QPixmap() // a stream's own address isn't a picture
+                   : NetFeeds::instance().image(src);
+    if (!src.startsWith('/'))
+        return {}; // network lists, actions
+    return Thumbnailer::instance().get(src);
+}
+
+QString EntryDelegate::columnTitle(Column c)
+{
+    switch (c) {
+    case Column::Name: return QObject::tr("Name");
+    case Column::Artist: return QObject::tr("Artist");
+    case Column::Album: return QObject::tr("Album");
+    case Column::Year: return QObject::tr("Year");
+    case Column::Duration: return QObject::tr("Length");
+    case Column::Size: return QObject::tr("Size");
+    case Column::Modified: return QObject::tr("Modified");
+    case Column::Progress: return QObject::tr("Progress");
+    case Column::Songs: return QObject::tr("Songs");
+    case Column::Detail: return QObject::tr("Details");
+    }
+    return {};
+}
+
+QList<QPair<Column, QRectF>> EntryDelegate::columnRects(const QRectF &row) const
+{
+    auto fixedWidth = [](Column c) {
+        switch (c) {
+        case Column::Year: return 56;
+        case Column::Duration: return 72;
+        case Column::Size: return 84;
+        case Column::Modified: return 150;
+        case Column::Progress: return 118;
+        case Column::Songs: return 84;
+        default: return 0; // shares what's left
+        }
+    };
+    auto weight = [](Column c) { return c == Column::Name ? 3.0 : 2.0; };
+    const double gap = 14;
+    double fixed = 0, weights = 0;
+    for (Column c : columns) {
+        fixed += fixedWidth(c);
+        weights += fixedWidth(c) ? 0 : weight(c);
+    }
+    const double inner = row.width() - 12; // a little room on the right
+    const double flexible = qMax(80.0, inner - fixed - gap * (columns.size() - 1));
+    QList<QPair<Column, QRectF>> out;
+    double x = row.left();
+    for (Column c : columns) {
+        const double w = fixedWidth(c) ? fixedWidth(c) : flexible * weight(c) / qMax(1.0, weights);
+        out << qMakePair(c, QRectF(x, row.top(), w, row.height()));
+        x += w + gap;
+    }
+    return out;
+}
+
 void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
     const Palette &c = theme().pal();
@@ -317,10 +435,8 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
         const QString iconName = index.data(IconRole).toString().isEmpty() ? iconForKind(kind) : index.data(IconRole).toString();
         const qreal dpr = p->device()->devicePixelRatioF();
         QPixmap cover;
-        if (kind == EntryKind::Audio || kind == EntryKind::Group) {
-            const QString thumbPath = index.data(ThumbRole).toString();
-            cover = Thumbnailer::instance().get(thumbPath.isEmpty() ? path : thumbPath);
-        }
+        if (kind == EntryKind::Audio || kind == EntryKind::Group || isWebImage(index.data(ThumbRole).toString()))
+            cover = thumbnail(index);
         const QRectF tile(r.left() + 4, r.center().y() - 15, 30, 30);
         if (!cover.isNull()) {
             // Small cover, cropped to a square.
@@ -358,8 +474,11 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
             textColor = c.textDim;
         p->setPen(textColor);
         QRectF textRect = r.adjusted(42, 0, -12, 0);
-        QString right = index.data(DetailRole).toString();
-        if (right.isEmpty() && (kind == EntryKind::Video || kind == EntryKind::Audio)) {
+        const auto cols = columnRects(r.adjusted(4, 0, 0, 0));
+        if (!cols.isEmpty())
+            textRect.setRight(cols.first().second.right());
+        QString right = cols.isEmpty() ? index.data(DetailRole).toString() : QString();
+        if (cols.isEmpty() && right.isEmpty() && (kind == EntryKind::Video || kind == EntryKind::Audio)) {
             if (progress > 0.01 && !watched)
                 right = QString("%1%").arg(int(progress * 100));
             else if (watched)
@@ -378,6 +497,8 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
         }
         p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft,
                     QFontMetrics(f).elidedText(name, Qt::ElideRight, int(textRect.width())));
+        if (cols.size() > 1)
+            paintDetails(p, option, index);
         p->restore();
         return;
     }
@@ -395,12 +516,13 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
     p->setClipPath(clip);
     p->fillRect(thumb, kind == EntryKind::Video ? QColor(0, 0, 0) : (theme().isDark() ? theme().tone(QColor(0x1c, 0x1c, 0x1c)) : c.surface));
 
-    QPixmap pm;
-    if (kind == EntryKind::Video || kind == EntryKind::Audio || kind == EntryKind::Folder || kind == EntryKind::Group) {
-        const QString thumbPath = index.data(ThumbRole).toString();
-        pm = Thumbnailer::instance().get(thumbPath.isEmpty() ? path : thumbPath);
-    }
-    if (!pm.isNull()) {
+    const QPixmap pm = kind == EntryKind::Action || kind == EntryKind::Category ? QPixmap() : thumbnail(index);
+    if (!pm.isNull() && isWebImage(index.data(ThumbRole).toString())) {
+        // Station logos and podcast artwork: the whole picture, centred.
+        const QSizeF fit = QSizeF(pm.size()).scaled(thumb.size() * (kind == EntryKind::Stream ? 0.62 : 1.0), Qt::KeepAspectRatio);
+        p->drawPixmap(QRectF(thumb.center().x() - fit.width() / 2, thumb.center().y() - fit.height() / 2, fit.width(), fit.height()),
+                      pm, QRectF(pm.rect()));
+    } else if (!pm.isNull()) {
         // Cover the tile (crop to fill).
         const QSizeF scaled = QSizeF(pm.size()).scaled(thumb.size(), Qt::KeepAspectRatioByExpanding);
         const QRectF target(thumb.center().x() - scaled.width() / 2, thumb.center().y() - scaled.height() / 2,
@@ -481,6 +603,145 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
     p->restore();
 }
 
+// The columns after the name in a details row.
+void EntryDelegate::paintDetails(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+    const Palette &c = theme().pal();
+    const auto kind = EntryKind(index.data(KindRole).toInt());
+    const bool media = kind == EntryKind::Video || kind == EntryKind::Audio;
+    const QString path = index.data(PathRole).toString();
+    QFont f = option.font;
+    f.setPixelSize(13);
+    p->setFont(f);
+    const QFontMetrics fm(f);
+    const QRectF r = QRectF(option.rect).adjusted(4, 1, 0, -1);
+    const auto cols = columnRects(r);
+    for (int i = 1; i < cols.size(); ++i) {
+        const auto [col, rect] = cols.at(i);
+        QString text;
+        Qt::Alignment align = Qt::AlignLeft;
+        switch (col) {
+        case Column::Artist: text = index.data(ArtistRole).toString(); break;
+        case Column::Album: text = index.data(AlbumRole).toString(); break;
+        case Column::Year:
+            text = index.data(YearRole).toInt() > 0 ? QString::number(index.data(YearRole).toInt()) : QString();
+            align = Qt::AlignRight;
+            break;
+        case Column::Duration: {
+            const qint64 ms = lengthOf(index);
+            if (ms > 0) {
+                const qint64 sec = (ms + 500) / 1000;
+                text = sec >= 3600 ? QString("%1:%2:%3").arg(sec / 3600).arg(sec / 60 % 60, 2, 10, QChar('0')).arg(sec % 60, 2, 10, QChar('0'))
+                                   : QString("%1:%2").arg(sec / 60).arg(sec % 60, 2, 10, QChar('0'));
+            }
+            align = Qt::AlignRight;
+            break;
+        }
+        case Column::Size:
+            if (media && index.data(SizeRole).toLongLong() > 0)
+                text = QLocale().formattedDataSize(index.data(SizeRole).toLongLong(), 1);
+            align = Qt::AlignRight;
+            break;
+        case Column::Modified:
+            if (index.data(DateRole).toDateTime().isValid())
+                text = QLocale().toString(index.data(DateRole).toDateTime(), QLocale::ShortFormat);
+            break;
+        case Column::Progress: {
+            if (!media)
+                break;
+            const double pr = library().progress(path);
+            if (pr >= 0.95) {
+                text = QObject::tr("Watched");
+            } else if (pr > 0.01) {
+                const QRectF track(rect.left(), rect.center().y() - 2, 64, 4);
+                p->setPen(Qt::NoPen);
+                p->setBrush(c.hover);
+                p->drawRoundedRect(track, 2, 2);
+                p->setBrush(theme().accent());
+                p->drawRoundedRect(QRectF(track.left(), track.top(), track.width() * pr, track.height()), 2, 2);
+                p->setPen(c.textMuted);
+                p->drawText(rect.adjusted(72, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, QString("%1%").arg(int(pr * 100)));
+            }
+            break;
+        }
+        case Column::Songs: // "Artist · 1990 · 12 songs" → "12 songs"
+            text = index.data(DetailRole).toString().section(QString(" · "), -1);
+            break;
+        case Column::Detail: text = index.data(DetailRole).toString(); break;
+        case Column::Name: break;
+        }
+        if (text.isEmpty())
+            continue;
+        p->setPen(c.textMuted);
+        p->drawText(rect, Qt::AlignVCenter | align, fm.elidedText(text, Qt::ElideRight, int(rect.width())));
+    }
+}
+
+// Column titles above the details view; a click sorts by that column.
+class DetailsHeader : public QWidget {
+public:
+    DetailsHeader(EntryDelegate *delegate, QListView *view, QWidget *parent)
+        : QWidget(parent), m_delegate(delegate), m_view(view)
+    {
+        setFixedHeight(34);
+        setCursor(Qt::PointingHandCursor);
+    }
+    std::function<void(Column)> clicked;
+    Column sorted = Column::Name;
+    bool sortedDesc = false;
+    bool hasSort = false;
+
+protected:
+    QRectF rowRect() const
+    {
+        // Same horizontal extent as the rows inside the view.
+        const QPoint origin = m_view->viewport()->mapTo(parentWidget(), QPoint(0, 0)) - pos();
+        return QRectF(origin.x() + 4, 0, m_view->viewport()->width() - 4, height());
+    }
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const Palette &c = theme().pal();
+        QFont f = font();
+        f.setPixelSize(12);
+        f.setWeight(QFont::DemiBold);
+        p.setFont(f);
+        const auto cols = m_delegate->columnRects(rowRect());
+        for (int i = 0; i < cols.size(); ++i) {
+            auto [col, rect] = cols.at(i);
+            if (i == 0)
+                rect.setLeft(rect.left() + 38); // over the names, past the icons
+            const bool right = col == Column::Year || col == Column::Duration || col == Column::Size;
+            const bool active = hasSort && col == sorted;
+            p.setPen(active ? c.text : c.textMuted);
+            const QString title = EntryDelegate::columnTitle(col);
+            p.drawText(rect, Qt::AlignVCenter | (right ? Qt::AlignRight : Qt::AlignLeft), title);
+            if (active) {
+                const int tw = QFontMetrics(f).horizontalAdvance(title);
+                const double x = right ? rect.right() - tw - 14 : rect.left() + tw + 4;
+                p.drawPixmap(QPointF(x, rect.center().y() - 6),
+                             theme().pixmap(sortedDesc ? "chevron-down" : "chevron-up", c.text, 12, devicePixelRatioF()));
+            }
+        }
+        p.setPen(QPen(c.border, 1));
+        p.drawLine(QPointF(0, height() - 0.5), QPointF(width(), height() - 0.5));
+    }
+    void mousePressEvent(QMouseEvent *e) override
+    {
+        for (const auto &[col, rect] : m_delegate->columnRects(rowRect()))
+            if (e->position().x() >= rect.left() - 7 && e->position().x() <= rect.right() + 7) {
+                if (clicked)
+                    clicked(col);
+                return;
+            }
+    }
+
+private:
+    EntryDelegate *m_delegate;
+    QListView *m_view;
+};
+
 // ---------------------------------------------------------------------------
 // LibraryView
 
@@ -488,10 +749,15 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
 {
     setObjectName(mode == Full ? "Library" : "SidePanel");
     setAttribute(Qt::WA_StyledBackground);
-    m_gridForSection = {{int(Section::Home), true},   {int(Section::Videos), true},
-                        {int(Section::Music), true},  {int(Section::Network), false},
-                        {int(Section::Playlists), false}, {int(Section::Recent), true},
-                        {int(Section::Queue), false}};
+    m_viewForSection = {{int(Section::Home), 0},     {int(Section::Videos), 0},    {int(Section::Music), 0},
+                        {int(Section::Network), 1},  {int(Section::Playlists), 1}, {int(Section::Recent), 0},
+                        {int(Section::Queue), 1}};
+    if (mode == Full) // "1:2,2:0": section → view, kept between runs
+        for (const QString &pair : prefs().string("ui/viewModes").split(',', Qt::SkipEmptyParts))
+            m_viewForSection[pair.section(':', 0, 0).toInt()] = qBound(0, pair.section(':', 1).toInt(), 2);
+    else // the side panel starts as lists
+        for (auto it = m_viewForSection.begin(); it != m_viewForSection.end(); ++it)
+            it.value() = 1;
 
     auto *lay = new QVBoxLayout(this);
     lay->setSpacing(0);
@@ -504,7 +770,7 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
     m_backBtn->setToolTip(tr("Back"));
     m_fwdBtn->setToolTip(tr("Forward"));
     m_sortBtn->setToolTip(tr("Sort"));
-    m_viewBtn->setToolTip(tr("Toggle grid / list"));
+    m_viewBtn->setToolTip(mode == Full ? tr("Grid, list or details") : tr("Grid or list"));
     m_moreBtn->setToolTip(tr("More"));
     m_count = new QLabel(this);
     m_count->setProperty("role", "dim");
@@ -706,6 +972,29 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
                 updateQueueCount();
         });
     }
+    if (mode == Full) {
+        m_detailsHeader = new DetailsHeader(m_delegate, m_view, this);
+        m_detailsHeader->hide();
+        m_detailsHeader->clicked = [this](Column col) {
+            const bool music = m_loc.section == Section::Music && !m_loc.music.isEmpty() && m_loc.music != "folders";
+            int key = SortName;
+            switch (col) {
+            case Column::Name: key = music && m_loc.music != "songs" && m_loc.group.isEmpty() ? SortDefault : SortName; break;
+            case Column::Artist: key = SortArtist; break;
+            case Column::Album: key = SortAlbum; break;
+            case Column::Year: key = SortYear; break;
+            case Column::Duration: key = SortDuration; break;
+            case Column::Size: key = SortSize; break;
+            case Column::Modified: key = SortDate; break;
+            case Column::Progress: key = SortProgress; break;
+            case Column::Songs:
+            case Column::Detail: return;
+            }
+            // The same column again turns the order around.
+            setSort(key, key == m_sortKey ? !m_sortDesc : (key == SortDate || key == SortProgress));
+        };
+        lay->addWidget(m_detailsHeader);
+    }
     lay->addWidget(m_view, 1);
     if (mode == Full) {
         m_home = new HomePage(this);
@@ -754,12 +1043,27 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
         m_back.append(m_loc);
         navigate(m_forward.takeFirst(), false);
     });
-    connect(m_viewBtn, &IconButton::clicked, this, [this] { setGridView(!m_delegate->grid); });
+    connect(m_viewBtn, &IconButton::clicked, this, [this] {
+        applyViewMode(m_mode == Full ? (viewMode() + 1) % 3 : (viewMode() == 0 ? 1 : 0));
+    });
     connect(m_sortBtn, &IconButton::clicked, this, &LibraryView::showSortMenu);
     connect(m_moreBtn, &IconButton::clicked, this, &LibraryView::showMoreMenu);
+    m_searchTimer = new QTimer(this);
+    m_searchTimer->setSingleShot(true);
+    m_searchTimer->setInterval(600);
+    connect(m_searchTimer, &QTimer::timeout, this, [this] { reload(); });
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &t) {
         if (m_home && m_home->isVisible()) {
             m_home->setFilter(t);
+            return;
+        }
+        // Radio and Podcasts search online (after a pause in typing).
+        if (m_loc.section == Section::Network && (m_loc.path == "radio" || m_loc.path == "podcasts")) {
+            const QString q = t.trimmed().length() >= 2 ? t.trimmed() : QString();
+            if (q != m_remoteQuery) {
+                m_remoteQuery = q;
+                m_searchTimer->start();
+            }
             return;
         }
         m_proxy->setFilterFixedString(t);
@@ -768,6 +1072,18 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
 
     auto repaint = [this] { m_view->viewport()->update(); };
     connect(&Thumbnailer::instance(), &Thumbnailer::ready, this, repaint);
+    connect(&NetFeeds::instance(), &NetFeeds::imageReady, this, repaint);
+    connect(&NetFeeds::instance(), &NetFeeds::ready, this, [this](const QString &key) {
+        if (m_loc.section == Section::Network && key == networkFeedKey()) {
+            const int scroll = m_view->verticalScrollBar()->value();
+            reload();
+            m_view->verticalScrollBar()->setValue(scroll);
+        }
+    });
+    connect(&Durations::instance(), &Durations::ready, this, [this] {
+        if (!m_delegate->columns.isEmpty())
+            m_view->viewport()->update();
+    });
     connect(&library(), &Library::positionsChanged, this, repaint);
     connect(&theme(), &Theme::changed, this, repaint);
     connect(&library(), &Library::recentChanged, this, [this] {
@@ -802,7 +1118,7 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
             reload();
     });
     connect(&library(), &Library::streamsChanged, this, [this] {
-        if (m_loc.section == Section::Network)
+        if (m_loc.section == Section::Network && !m_loc.path.startsWith("radio"))
             reload();
     });
     connect(&prefs(), &Prefs::changed, this, [this](const QString &key) {
@@ -879,11 +1195,13 @@ void LibraryView::navigate(const Location &target, bool record)
     m_loc = loc;
     if ((loc.section == Section::Videos || loc.section == Section::Music) && !loc.path.isEmpty())
         library().visitFolder(loc.path);
+    m_remoteQuery.clear();
     m_search->clear();
     loadSort();
     static_cast<EntryProxy *>(m_proxy)->key = m_sortKey;
     const bool menu = loc.section == Section::Music && loc.music.isEmpty();
-    setGridView(m_mode == Full && !menu ? m_gridForSection.value(int(loc.section), true) : false, !menu);
+    applyViewMode(menu ? 1 : m_mode == Full ? m_viewForSection.value(int(loc.section), 0)
+                                           : (m_viewForSection.value(int(loc.section), 0) == 0 ? 0 : 1), false);
     reload();
     emit sectionShown(loc.section);
 }
@@ -953,6 +1271,8 @@ void LibraryView::reload()
         e.kind = Library::kindFor(loc);
         e.path = loc;
         e.name = Library::displayName(loc);
+        if (Library::isUrl(loc) && !library().streamName(loc).isEmpty())
+            e.name = library().streamName(loc);
         if (const MusicIndex::Track *t = e.kind == EntryKind::Audio ? musicIndex().track(loc) : nullptr)
             e.name = t->label();
         const QFileInfo fi(loc);
@@ -1007,21 +1327,9 @@ void LibraryView::reload()
                              : tr("This folder has no %1.").arg(m_loc.section == Section::Music ? tr("music") : tr("videos"));
         break;
     }
-    case Section::Network: {
-        LibraryEntry open;
-        open.kind = EntryKind::Action;
-        open.path = "open-network";
-        open.name = tr("Open network stream…");
-        addEntry(open, order++);
-        for (const QString &url : library().streams()) {
-            LibraryEntry e;
-            e.kind = EntryKind::Stream;
-            e.path = url;
-            e.name = url;
-            addEntry(e, order++);
-        }
+    case Section::Network:
+        reloadNetwork(order, empty);
         break;
-    }
     case Section::Playlists: {
         if (m_loc.playlist.isEmpty()) {
             LibraryEntry create;
@@ -1072,6 +1380,108 @@ void LibraryView::reload()
     m_fwdBtn->setEnabled(!m_forward.isEmpty());
     rebuildHeader();
     updateGrid();
+}
+
+QString LibraryView::networkFeedKey() const
+{
+    const QString &p = m_loc.path;
+    if (p == "radio")
+        return m_remoteQuery.isEmpty() ? "radio:top" : "radio:search:" + m_remoteQuery;
+    if (p == "podcasts")
+        return m_remoteQuery.isEmpty() ? QString() : "podcasts:search:" + m_remoteQuery;
+    if (p.startsWith("m3u:") || p.startsWith("rss:"))
+        return p;
+    return {};
+}
+
+// Network: saved streams and lists, Radio and Podcasts, or one of the online
+// lists (stations, a podcast's episodes, a channel list).
+void LibraryView::reloadNetwork(int &order, QString &empty)
+{
+    auto action = [&](const QString &id, const QString &name) {
+        LibraryEntry e;
+        e.kind = EntryKind::Action;
+        e.path = id;
+        e.name = name;
+        addEntry(e, order++);
+    };
+    auto list = [&](const QString &path, const QString &name, const QString &icon, const QString &image = {},
+                    const QString &detail = {}) {
+        LibraryEntry e;
+        e.kind = EntryKind::Folder;
+        e.path = path;
+        e.name = name;
+        QStandardItem *item = addEntry(e, order++);
+        item->setData(icon, IconRole);
+        item->setData(image, ThumbRole);
+        item->setData(detail, DetailRole);
+        item->setToolTip(path.mid(4));
+        return item;
+    };
+    auto hostName = [](const QString &url) {
+        const QUrl u(url);
+        return u.host().isEmpty() ? url : u.host() + (u.fileName().isEmpty() ? QString() : " · " + u.fileName());
+    };
+    const QString &path = m_loc.path;
+    if (path.isEmpty()) {
+        action("open-network", tr("Open network stream…"));
+        for (const auto &[id, name, icon] : {std::tuple{QString("radio"), tr("Radio"), QString("radio")},
+                                             std::tuple{QString("podcasts"), tr("Podcasts"), QString("podcast")}}) {
+            LibraryEntry e;
+            e.kind = EntryKind::Category;
+            e.path = id;
+            e.name = name;
+            addEntry(e, order++)->setData(icon, IconRole);
+        }
+        for (const QString &url : library().channelLists()) {
+            const QString name = library().streamName(url);
+            list("m3u:" + url, name.isEmpty() ? hostName(url) : name, "stream", {}, tr("Channel list"));
+        }
+        for (const QString &url : library().streams()) {
+            LibraryEntry e;
+            e.kind = EntryKind::Stream;
+            e.path = url;
+            e.name = library().streamName(url).isEmpty() ? url : library().streamName(url);
+            QStandardItem *item = addEntry(e, order++);
+            item->setData(library().streamImage(url), ThumbRole);
+        }
+        return;
+    }
+    if (path == "podcasts") {
+        action("add-podcast", tr("Add a podcast by its feed link…"));
+        if (m_remoteQuery.isEmpty()) {
+            for (const QString &url : library().podcasts()) {
+                const QString name = library().streamName(url);
+                list("rss:" + url, name.isEmpty() ? hostName(url) : name, "podcast", library().streamImage(url));
+            }
+            empty = tr("No podcasts yet.\nSearch for one above, or add one by its feed link.");
+            return;
+        }
+    }
+    const QString key = networkFeedKey();
+    if (key.isEmpty())
+        return;
+    const NetFeeds::Feed feed = NetFeeds::instance().feed(key);
+    if (key.startsWith("podcasts:")) {
+        for (const NetFeeds::Item &it : feed.items)
+            list("rss:" + it.url, it.title, "podcast", it.image, it.detail);
+    } else {
+        // Remember a podcast's title and artwork for the list of podcasts.
+        if (key.startsWith("rss:") && !feed.title.isEmpty() && library().podcasts().contains(key.mid(4)))
+            library().setStreamInfo(key.mid(4), feed.title, feed.image);
+        for (const NetFeeds::Item &it : feed.items) {
+            LibraryEntry e;
+            e.kind = key.startsWith("rss:") ? EntryKind::Audio : EntryKind::Stream;
+            e.path = it.url;
+            e.name = it.title;
+            e.modified = it.date;
+            QStandardItem *item = addEntry(e, order++);
+            item->setData(it.image, ThumbRole);
+            item->setData(it.detail, DetailRole);
+            item->setToolTip(it.detail.isEmpty() ? it.url : it.detail);
+        }
+    }
+    empty = feed.loading && feed.items.isEmpty() ? tr("Loading…") : feed.error;
 }
 
 // Music: the menu (Add, Songs, Albums, Artists, Genres, Folders), or a view
@@ -1193,6 +1603,12 @@ QStringList LibraryView::filesFor(const QModelIndex &idx) const
     case EntryKind::Group:
         return tracksFor(path);
     case EntryKind::Folder:
+        if (path.startsWith("m3u:") || path.startsWith("rss:")) { // what's loaded of an online list
+            QStringList urls;
+            for (const NetFeeds::Item &it : NetFeeds::instance().feed(path).items)
+                urls << it.url;
+            return urls;
+        }
         return library().mediaInFolder(path, filterForSection());
     case EntryKind::Playlist:
         return library().expand(library().playlist(path));
@@ -1249,7 +1665,20 @@ void LibraryView::rebuildHeader()
             targets << m_loc;
         }
     }
-    if (!m_loc.playlist.isEmpty()) {
+    if (m_loc.section == Section::Network && !m_loc.path.isEmpty()) {
+        const QString &p = m_loc.path;
+        if (p.startsWith("rss:") && library().podcasts().contains(p.mid(4))) {
+            parts << tr("Podcasts");
+            targets << Location{Section::Network, "podcasts"};
+        }
+        QString name = p == "radio" ? tr("Radio") : p == "podcasts" ? tr("Podcasts") : library().streamName(p.mid(4));
+        if (name.isEmpty())
+            name = NetFeeds::instance().feed(p).title;
+        if (name.isEmpty())
+            name = QUrl(p.mid(4)).host();
+        parts << name;
+        targets << m_loc;
+    } else if (!m_loc.playlist.isEmpty()) {
         parts << m_loc.playlist;
         targets << m_loc;
     } else if (!m_loc.path.isEmpty()) {
@@ -1495,12 +1924,72 @@ void LibraryView::resizeEvent(QResizeEvent *e)
     updateGrid();
 }
 
+int LibraryView::viewMode() const
+{
+    return m_delegate->grid ? 0 : m_delegate->columns.isEmpty() ? 1 : 2;
+}
+
+void LibraryView::setViewMode(int mode)
+{
+    applyViewMode(mode);
+}
+
+void LibraryView::applyViewMode(int mode, bool remember)
+{
+    if (m_mode != Full)
+        mode = qMin(mode, 1);
+    if (remember) {
+        m_viewForSection[int(m_loc.section)] = mode;
+        if (m_mode == Full) {
+            QStringList pairs;
+            for (auto it = m_viewForSection.begin(); it != m_viewForSection.end(); ++it)
+                pairs << QString("%1:%2").arg(it.key()).arg(it.value());
+            pairs.sort();
+            prefs().set("ui/viewModes", pairs.join(','));
+        }
+    }
+    m_delegate->columns = mode == 2 ? detailColumns() : QList<Column>();
+    if (m_detailsHeader)
+        m_detailsHeader->setVisible(mode == 2);
+    setGridView(mode == 0, false);
+    // The button shows what a click switches to.
+    const int nextMode = m_mode == Full ? (mode + 1) % 3 : (mode == 0 ? 1 : 0);
+    m_viewBtn->setIconName(nextMode == 0 ? "grid" : nextMode == 1 ? "listview" : "details");
+    m_viewBtn->setToolTip(nextMode == 0 ? tr("Show as grid") : nextMode == 1 ? tr("Show as list") : tr("Show details"));
+}
+
+// Which columns the details view shows for what's listed here.
+QList<Column> LibraryView::detailColumns() const
+{
+    if (m_loc.section == Section::Music && !m_loc.music.isEmpty() && m_loc.music != "folders") {
+        const bool tracks = m_loc.music == "songs" || !m_loc.album.isEmpty() ||
+                            (!m_loc.group.isEmpty() && m_loc.music != "artists");
+        if (tracks)
+            return {Column::Name, Column::Artist, Column::Album, Column::Year, Column::Duration};
+        if (m_loc.music == "albums" || (m_loc.music == "artists" && !m_loc.group.isEmpty()))
+            return {Column::Name, Column::Artist, Column::Year, Column::Songs};
+        return {Column::Name, Column::Songs};
+    }
+    if (m_loc.section == Section::Network)
+        return {Column::Name, Column::Detail, Column::Duration, Column::Progress};
+    if (m_loc.section == Section::Playlists && m_loc.playlist.isEmpty())
+        return {Column::Name};
+    return {Column::Name, Column::Duration, Column::Size, Column::Modified, Column::Progress};
+}
+
+void LibraryView::setSort(int key, bool desc)
+{
+    m_sortKey = key;
+    m_sortDesc = desc;
+    saveSort();
+    applySort();
+}
+
 void LibraryView::setGridView(bool grid, bool remember)
 {
     m_delegate->grid = grid;
     if (remember)
-        m_gridForSection[int(m_loc.section)] = grid;
-    m_viewBtn->setIconName(grid ? "listview" : "grid");
+        m_viewForSection[int(m_loc.section)] = grid ? 0 : 1;
     if (grid) {
         m_view->setViewMode(QListView::IconMode);
         m_view->setFlow(QListView::LeftToRight);
@@ -1580,7 +2069,10 @@ void LibraryView::activate(const QModelIndex &index)
         navigate({Section::Playlists, {}, path});
         break;
     case EntryKind::Category:
-        navigate({Section::Music, {}, {}, path});
+        if (m_loc.section == Section::Network)
+            navigate({Section::Network, path});
+        else
+            navigate({Section::Music, {}, {}, path});
         break;
     case EntryKind::Group:
         if (path.startsWith("a:")) // an album on an artist's page
@@ -1590,12 +2082,8 @@ void LibraryView::activate(const QModelIndex &index)
         break;
     case EntryKind::Action:
         if (path == "create-playlist") {
-            bool ok = false;
-            const QString name = QInputDialog::getText(this, tr("Create playlist"), tr("Playlist name:"),
-                                                       QLineEdit::Normal, tr("New playlist"), &ok);
-            if (ok)
-                library().createPlaylist(name);
-        } else if (path == "open-network") {
+            (new NewPlaylistOverlay({}, {}, window()))->open();
+        } else if (path == "open-network" || path == "add-podcast") {
             emit openNetworkRequested();
         } else if (path == "add-music-folder") {
             emit addFolderRequested();
@@ -1609,6 +2097,15 @@ void LibraryView::activate(const QModelIndex &index)
             break;
         }
         int at = 0;
+        if (m_loc.section == Section::Network && Library::isUrl(path)) {
+            // Name the station or episode for the queue and the title bar.
+            library().setStreamInfo(path, index.data(Qt::DisplayRole).toString(), index.data(ThumbRole).toString());
+            if (m_loc.path.startsWith("m3u:")) { // channels: next and previous zap through the list
+                const QStringList items = currentPlayable(&at, path);
+                emit playRequested(items, at);
+                break;
+            }
+        }
         // Videos, streams and anything on Home/Recent play on their own; music
         // tracks queue the rest of their album/folder/playlist so it plays on.
         if (kind != EntryKind::Audio || m_loc.section == Section::Home || m_loc.section == Section::Recent
@@ -1631,12 +2128,118 @@ void LibraryView::addPlaylistMenu(QMenu &menu, const QStringList &items, const Q
     if (!library().playlistNames().isEmpty())
         addTo->addSeparator();
     addTo->addAction(tr("New Playlist…"), this, [this, items, suggestedName] {
-        bool ok = false;
-        const QString n = QInputDialog::getText(this, tr("Create playlist"), tr("Playlist name:"), QLineEdit::Normal,
-                                                suggestedName.isEmpty() ? tr("New playlist") : suggestedName, &ok);
-        if (ok)
-            library().addToPlaylist(library().createPlaylist(n), items);
+        (new NewPlaylistOverlay(items, suggestedName, window()))->open();
     });
+}
+
+Library::Pin LibraryView::pinFor(const QModelIndex &index) const
+{
+    const auto kind = EntryKind(index.data(KindRole).toInt());
+    const QString path = index.data(PathRole).toString();
+    const QString name = index.data(Qt::DisplayRole).toString();
+    switch (kind) {
+    case EntryKind::Folder: {
+        if (path.startsWith("m3u:"))
+            return {"channels", path.mid(4), name};
+        if (path.startsWith("rss:"))
+            return {"podcast", path.mid(4), name};
+        Section s = m_loc.section;
+        if (s != Section::Videos && s != Section::Music) {
+            s = Section::Videos;
+            for (const QString &root : prefs().list("library/musicFolders"))
+                if (!root.isEmpty() && (path == root || path.startsWith(QDir::cleanPath(root) + "/")))
+                    s = Section::Music;
+        }
+        return {"folder", path, name, int(s)};
+    }
+    case EntryKind::Playlist:
+        return {"playlist", path, name};
+    case EntryKind::Group:
+        if (path.startsWith("a:"))
+            return {"music", m_loc.music + "\n" + m_loc.group.mid(2) + "\n" + path.mid(2), name};
+        return {"music", m_loc.music + "\n" + path.mid(2) + "\n", name};
+    case EntryKind::Video:
+    case EntryKind::Audio:
+    case EntryKind::Stream:
+        return {"file", path, name};
+    case EntryKind::Category:
+        if (m_loc.section == Section::Network)
+            return {"network", path, name};
+        return {"music", path + "\n\n", name};
+    default:
+        return {};
+    }
+}
+
+Library::Pin LibraryView::pinForHere() const
+{
+    const QString title = m_title ? m_title->text() : QString();
+    QString name;
+    for (int i = m_crumbs->count() - 1; i >= 0 && name.isEmpty(); --i) // the last breadcrumb
+        if (auto *l = qobject_cast<QLabel *>(m_crumbs->itemAt(i)->widget()); l && !l->text().isEmpty())
+            name = l->text();
+    if (name.isEmpty())
+        name = title;
+    switch (m_loc.section) {
+    case Section::Videos:
+    case Section::Music:
+        if (m_loc.section == Section::Music && !m_loc.music.isEmpty() && m_loc.music != "folders")
+            return {"music", m_loc.music + "\n" + m_loc.group.mid(2) + "\n" + m_loc.album.mid(2), name};
+        if (!m_loc.path.isEmpty())
+            return {"folder", m_loc.path, QFileInfo(m_loc.path).fileName(), int(m_loc.section)};
+        return {};
+    case Section::Playlists:
+        return m_loc.playlist.isEmpty() ? Library::Pin{} : Library::Pin{"playlist", m_loc.playlist, m_loc.playlist};
+    case Section::Network:
+        if (m_loc.path.startsWith("m3u:"))
+            return {"channels", m_loc.path.mid(4), name};
+        if (m_loc.path.startsWith("rss:"))
+            return {"podcast", m_loc.path.mid(4), name};
+        if (!m_loc.path.isEmpty())
+            return {"network", m_loc.path, name};
+        return {};
+    default:
+        return {};
+    }
+}
+
+void LibraryView::addPinAction(QMenu &menu, const QModelIndex &index)
+{
+    const Library::Pin pin = pinFor(index);
+    if (pin.kind.isEmpty())
+        return;
+    if (library().isPinned(pin.kind, pin.target))
+        menu.addAction(theme().icon("pin", theme().accent()), tr("Unpin from Sidebar"), this,
+                       [pin] { library().unpin(pin.kind, pin.target); });
+    else
+        menu.addAction(theme().icon("pin", theme().accent()), tr("Pin to Sidebar"), this, [pin] { library().pin(pin); });
+}
+
+void LibraryView::openPin(const Library::Pin &pin)
+{
+    if (pin.kind == "folder") {
+        navigate({Section(pin.section), pin.target, {}});
+    } else if (pin.kind == "playlist") {
+        navigate({Section::Playlists, {}, pin.target});
+    } else if (pin.kind == "music") {
+        const QStringList parts = pin.target.split('\n');
+        const QString group = parts.value(1), album = parts.value(2);
+        navigate({Section::Music, {}, {}, parts.value(0), group.isEmpty() && album.isEmpty() ? QString() : "g:" + group,
+                  album.isEmpty() ? QString() : "a:" + album});
+    } else if (pin.kind == "channels") {
+        navigate({Section::Network, "m3u:" + pin.target});
+    } else if (pin.kind == "podcast") {
+        navigate({Section::Network, "rss:" + pin.target});
+    } else if (pin.kind == "network") {
+        navigate({Section::Network, pin.target});
+    } else if (pin.kind == "file") {
+        emit playRequested({pin.target}, 0);
+    }
+}
+
+void LibraryView::showNetwork(const QString &path)
+{
+    navigate({Section::Network, path});
 }
 
 void LibraryView::showContextMenu(const QPoint &pos)
@@ -1673,18 +2276,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
         QStringList files;
         for (const QModelIndex &i : sel)
             files << filesFor(i);
-        QMenu *addTo = menu.addMenu(theme().icon("playlist", accent), tr("Add to playlist"));
-        for (const QString &name : library().playlistNames())
-            addTo->addAction(name, this, [files, name] { library().addToPlaylist(name, files); });
-        if (!library().playlistNames().isEmpty())
-            addTo->addSeparator();
-        addTo->addAction(tr("New playlist…"), this, [this, files] {
-            bool ok = false;
-            const QString name = QInputDialog::getText(this, tr("Create playlist"), tr("Playlist name:"),
-                                                       QLineEdit::Normal, tr("New playlist"), &ok);
-            if (ok)
-                library().addToPlaylist(library().createPlaylist(name), files);
-        });
+        addPlaylistMenu(menu, files);
         QList<int> orders; // descending, so earlier removals don't shift later ones
         QStringList paths;
         for (const QModelIndex &i : sel) {
@@ -1716,6 +2308,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
         const QString name = index.data(Qt::DisplayRole).toString();
         const bool album = path.startsWith("a:") || m_loc.music == "albums";
         const bool artist = m_loc.music == "artists" && m_loc.group.isEmpty();
+        addPinAction(menu, index);
         addPlaylistMenu(menu, items, name);
         menu.addSeparator();
         const QString quoted = QFontMetrics(menu.font()).elidedText(name, Qt::ElideRight, 260);
@@ -1761,6 +2354,8 @@ void LibraryView::showContextMenu(const QPoint &pos)
     }
 
     if (kind == EntryKind::Playlist) {
+        addPinAction(menu, index);
+        menu.addSeparator();
         menu.addAction(theme().icon("play", accent), tr("Play"), this, [this, path] {
             const QStringList items = library().expand(library().playlist(path));
             if (!items.isEmpty())
@@ -1782,7 +2377,41 @@ void LibraryView::showContextMenu(const QPoint &pos)
         return;
     }
 
+    if (kind == EntryKind::Folder && (path.startsWith("m3u:") || path.startsWith("rss:"))) {
+        const QString url = path.mid(4);
+        const bool podcast = path.startsWith("rss:");
+        menu.addAction(theme().icon("play", accent), podcast ? tr("Play Episodes") : tr("Play Channels"), this,
+                       [this, index] {
+                           const QStringList items = filesFor(index);
+                           if (items.isEmpty())
+                               navigate({Section::Network, index.data(PathRole).toString()}); // load it first
+                           else
+                               emit playRequested(items, 0);
+                       });
+        addPinAction(menu, index);
+        menu.addSeparator();
+        if (podcast && !library().podcasts().contains(url))
+            menu.addAction(theme().icon("plus", accent), tr("Subscribe"), this, [url, index] {
+                library().addPodcast(url, index.data(Qt::DisplayRole).toString());
+                library().setStreamInfo(url, index.data(Qt::DisplayRole).toString(), index.data(ThumbRole).toString());
+            });
+        else if (podcast)
+            menu.addAction(theme().icon("trash", accent), tr("Unsubscribe"), this, [url] {
+                library().removePodcast(url);
+                library().unpin("podcast", url);
+            });
+        else
+            menu.addAction(theme().icon("trash", accent), tr("Forget Channel List"), this, [url] {
+                library().removeChannelList(url);
+                library().unpin("channels", url);
+            });
+        menu.exec(menuAt);
+        return;
+    }
+
     if (kind == EntryKind::Folder) {
+        addPinAction(menu, index);
+        menu.addSeparator();
         menu.addAction(theme().icon("play", accent), tr("Play folder"), this, [this, path] {
             const QStringList items = library().mediaInFolder(path, filterForSection());
             if (!items.isEmpty())
@@ -1790,6 +2419,14 @@ void LibraryView::showContextMenu(const QPoint &pos)
         });
         menu.addAction(theme().icon("plus", accent), tr("Add folder to queue"), this,
                        [this, path] { emit enqueueRequested(library().mediaInFolder(path, filterForSection())); });
+        menu.addSeparator();
+        if (m_loc.section != Section::Music) {
+            menu.addAction(theme().icon("subtitles", accent), tr("Edit Subtitle Tracks…"), this,
+                           [this, path] { (new FolderTracksOverlay(path, true, window()))->open(); });
+            menu.addAction(theme().icon("audio", accent), tr("Edit Audio Tracks…"), this,
+                           [this, path] { (new FolderTracksOverlay(path, false, window()))->open(); });
+        }
+        menu.addAction(theme().icon("info", accent), tr("Info…"), this, [this, path] { emit infoRequested(path); });
         menu.addAction(theme().icon("external", accent), tr("Open in file manager"), this,
                        [path] { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
         menu.exec(menuAt);
@@ -1799,18 +2436,18 @@ void LibraryView::showContextMenu(const QPoint &pos)
     if (inQueue)
         menu.addAction(theme().icon("play", accent), tr("Play"), this, [this, index] { activate(index); });
 
-    QMenu *addTo = menu.addMenu(theme().icon("playlist", accent), tr("Add to playlist"));
-    for (const QString &name : library().playlistNames())
-        addTo->addAction(name, this, [path, name] { library().addToPlaylist(name, {path}); });
-    if (!library().playlistNames().isEmpty())
-        addTo->addSeparator();
-    addTo->addAction(tr("New playlist…"), this, [this, path] {
-        bool ok = false;
-        const QString name = QInputDialog::getText(this, tr("Create playlist"), tr("Playlist name:"),
-                                                   QLineEdit::Normal, tr("New playlist"), &ok);
-        if (ok)
-            library().addToPlaylist(library().createPlaylist(name), {path});
-    });
+    if (!inQueue) {
+        menu.addAction(theme().icon("play-next", accent), tr("Play Next"), this,
+                       [this, path] { emit playNextRequested({path}); });
+        menu.addSeparator();
+    }
+    addPlaylistMenu(menu, {path});
+    addPinAction(menu, index);
+    if (Library::isUrl(path) && !library().streams().contains(path) && m_loc.section == Section::Network)
+        menu.addAction(theme().icon("plus", accent), tr("Save to Network"), this, [path, index] {
+            library().setStreamInfo(path, index.data(Qt::DisplayRole).toString(), index.data(ThumbRole).toString());
+            library().addStream(path, index.data(Qt::DisplayRole).toString());
+        });
 
     if (kind == EntryKind::Video || kind == EntryKind::Audio) {
         const bool watched = library().progress(path) >= 0.95;
@@ -1822,6 +2459,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
         menu.addAction(theme().icon("folder", accent), tr("Show in folder"), this, [path] {
             QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
         });
+    menu.addAction(theme().icon("info", accent), tr("Info…"), this, [this, path] { emit infoRequested(path); });
 
     menu.addSeparator();
     if (m_loc.section == Section::Recent || m_loc.section == Section::Home)
@@ -1849,6 +2487,17 @@ void LibraryView::applySort()
     static_cast<EntryProxy *>(m_proxy)->key = m_sortKey;
     m_proxy->invalidate();
     m_proxy->sort(0, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
+    if (m_detailsHeader) {
+        static const QHash<int, Column> columnFor = {
+            {SortName, Column::Name},         {SortArtist, Column::Artist},  {SortAlbum, Column::Album},
+            {SortYear, Column::Year},         {SortDuration, Column::Duration}, {SortSize, Column::Size},
+            {SortDate, Column::Modified},     {SortProgress, Column::Progress}};
+        const bool music = m_loc.section == Section::Music && !m_loc.music.isEmpty() && m_loc.music != "folders";
+        m_detailsHeader->hasSort = columnFor.contains(m_sortKey) || (music && m_sortKey == SortDefault);
+        m_detailsHeader->sorted = columnFor.value(m_sortKey, Column::Name);
+        m_detailsHeader->sortedDesc = m_sortDesc;
+        m_detailsHeader->update();
+    }
 }
 
 void LibraryView::loadSort()
@@ -1860,7 +2509,7 @@ void LibraryView::loadSort()
         m_sortDesc = prefs().get("music/albumYearDesc").toBool();
         return;
     }
-    const QVariant saved = ctx.startsWith("music/") ? prefs().get("sort/" + ctx) : m_sortFor.value(ctx);
+    const QVariant saved = prefs().get("sort/" + ctx);
     const QStringList parts = saved.toString().split(',');
     m_sortKey = parts.value(0).toInt();
     m_sortDesc = parts.value(1) == "1";
@@ -1870,10 +2519,7 @@ void LibraryView::saveSort()
 {
     const QString ctx = sortContext(m_loc.section, m_loc.music, !m_loc.group.isEmpty(), !m_loc.album.isEmpty());
     const QString value = QString("%1,%2").arg(m_sortKey).arg(m_sortDesc ? 1 : 0);
-    if (ctx.startsWith("music/"))
-        prefs().set("sort/" + ctx, value); // music views keep their order between runs
-    else
-        m_sortFor.insert(ctx, value);
+    prefs().set("sort/" + ctx, value); // every list keeps its order between runs
 }
 
 void LibraryView::showSortMenu()
@@ -1918,12 +2564,38 @@ void LibraryView::showSortMenu()
         return;
     }
 
-    QList<QPair<QString, int>> keys;
     if (!music) {
-        keys = {{tr("Default order"), SortDefault}, {tr("Name"), SortName}, {tr("Date modified"), SortDate}, {tr("Size"), SortSize}};
-    } else if (m_loc.music == "songs") {
+        // Videos and other lists: one choice, order included (as in the video).
+        struct Choice {
+            QString label;
+            int key;
+            bool desc;
+        };
+        QList<Choice> choices = {{tr("Default Order"), SortDefault, false}};
+        const bool media = m_loc.section != Section::Playlists || !m_loc.playlist.isEmpty();
+        if (media && m_loc.section != Section::Network)
+            choices << Choice{tr("Unwatched First"), SortUnwatched, false} << Choice{tr("Watched First"), SortWatched, false};
+        if (media)
+            choices << Choice{tr("Newest First"), SortDate, true} << Choice{tr("Oldest First"), SortDate, false};
+        choices << Choice{tr("Title A–Z"), SortName, false} << Choice{tr("Title Z–A"), SortName, true};
+        if (media && m_loc.section != Section::Network)
+            choices << Choice{tr("Largest First"), SortSize, true} << Choice{tr("Longest First"), SortDuration, true};
+        auto *group = new QActionGroup(&menu);
+        for (const Choice &c : choices) {
+            QAction *a = menu.addAction(c.label, this, [this, c] { setSort(c.key, c.desc); });
+            a->setCheckable(true);
+            a->setChecked(c.key == m_sortKey && (c.key == SortDefault || c.key == SortUnwatched ||
+                                                 c.key == SortWatched || c.desc == m_sortDesc));
+            group->addAction(a);
+        }
+        menu.exec(at);
+        return;
+    }
+
+    QList<QPair<QString, int>> keys;
+    if (m_loc.music == "songs") {
         keys = {{tr("Title"), SortDefault}, {tr("Artist"), SortArtist}, {tr("Album"), SortAlbum},
-                {tr("Year"), SortYear}, {tr("Date modified"), SortDate}};
+                {tr("Year"), SortYear}, {tr("Length"), SortDuration}, {tr("Date modified"), SortDate}};
     } else if (inGroup) {
         keys = {{m_loc.music == "genres" ? tr("Album order") : tr("Track order"), SortDefault}, {tr("Title"), SortName}};
         if (m_loc.music == "genres")
@@ -1963,6 +2635,65 @@ void LibraryView::showSortMenu()
     menu.exec(at);
 }
 
+// ⋯ → Add Files: into the open playlist, or copied into the open folder.
+void LibraryView::addFilesHere()
+{
+    if (m_loc.section == Section::Playlists && !m_loc.playlist.isEmpty()) {
+        const QStringList files = FileDialogs::openFiles(this, tr("Add to playlist"), QDir::homePath(),
+                                                         tr("Media files (*.mp4 *.mkv *.avi *.mov *.webm *.mp3 *.flac *.ogg *.opus *.m4a *.wav);;All files (*)"));
+        if (!files.isEmpty())
+            library().addToPlaylist(m_loc.playlist, files);
+        return;
+    }
+    const QString dir = m_loc.path;
+    if (dir.isEmpty())
+        return;
+    const QStringList files = FileDialogs::openFiles(this, tr("Copy into “%1”").arg(QFileInfo(dir).fileName()),
+                                                     QDir::homePath(), tr("All files (*)"));
+    if (files.isEmpty())
+        return;
+    // Copies in the background (videos can be big); names already there are kept.
+    m_count->setText(tr("Copying %1…").arg(files.size() == 1 ? QFileInfo(files.first()).fileName()
+                                                             : tr("%1 files").arg(files.size())));
+    QPointer<LibraryView> self(this);
+    QThread *worker = QThread::create([files, dir, self] {
+        int copied = 0, skipped = 0;
+        for (const QString &f : files) {
+            const QString target = dir + "/" + QFileInfo(f).fileName();
+            if (QFileInfo::exists(target) || !QFile::copy(f, target))
+                ++skipped;
+            else
+                ++copied;
+        }
+        QMetaObject::invokeMethod(qApp, [self, copied, skipped] {
+            if (!self)
+                return;
+            self->reload();
+            QString text = copied == 1 ? tr("Copied 1 file") : tr("Copied %1 files").arg(copied);
+            if (skipped)
+                text += tr(" · %1 skipped (already there or unreadable)").arg(skipped);
+            self->m_count->setText(text);
+        });
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+}
+
+// ⋯ → Resync: thumbnails, tags and online lists fetched again.
+void LibraryView::resync()
+{
+    if (m_loc.section == Section::Music)
+        musicIndex().rescan();
+    if (m_loc.section == Section::Network && !networkFeedKey().isEmpty())
+        NetFeeds::instance().refresh(networkFeedKey());
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        const QString path = m_model->item(i)->data(PathRole).toString();
+        if (path.startsWith('/'))
+            Thumbnailer::instance().forget(path);
+    }
+    reload();
+}
+
 void LibraryView::showMoreMenu()
 {
     const QColor accent = theme().accent();
@@ -1993,17 +2724,68 @@ void LibraryView::showMoreMenu()
     }
     if (m_loc.section == Section::Recent)
         menu.addAction(theme().icon("trash", accent), tr("Clear history"), this, [] { library().clearRecent(); });
-    if ((m_loc.section == Section::Videos || m_loc.section == Section::Music) && !m_loc.path.isEmpty()) {
+
+    const bool folder = (m_loc.section == Section::Videos || m_loc.section == Section::Music) && !m_loc.path.isEmpty();
+    const bool playlist = m_loc.section == Section::Playlists && !m_loc.playlist.isEmpty();
+    const bool music = m_loc.section == Section::Music && !m_loc.music.isEmpty() && m_loc.music != "folders";
+    // Adding: files into this folder or playlist, a folder to the library.
+    if (folder || playlist)
+        menu.addAction(theme().icon("open-media", accent), folder ? tr("Add Files to This Folder…") : tr("Add Files…"),
+                       this, &LibraryView::addFilesHere);
+    if (playlist)
+        menu.addAction(theme().icon("folder-plus", accent), tr("Add Folder…"), this, [this] {
+            const QString dir = FileDialogs::existingDirectory(this, tr("Add folder to playlist"));
+            if (!dir.isEmpty())
+                library().addToPlaylist(m_loc.playlist, library().mediaInFolder(dir));
+        });
+    else if (m_loc.section == Section::Videos || m_loc.section == Section::Music || m_loc.section == Section::Home)
+        menu.addAction(theme().icon("folder-plus", accent), tr("Add Library Folder…"), this, &LibraryView::addFolderRequested);
+    if (m_loc.section == Section::Network)
+        menu.addAction(theme().icon("globe", accent), tr("Open Network Stream…"), this, &LibraryView::openNetworkRequested);
+    if (m_loc.section == Section::Network && m_loc.path.startsWith("rss:")) {
+        const QString url = m_loc.path.mid(4);
+        if (library().podcasts().contains(url))
+            menu.addAction(theme().icon("trash", accent), tr("Unsubscribe"), this, [this, url] {
+                library().removePodcast(url);
+                library().unpin("podcast", url);
+                navigate({Section::Network, "podcasts"});
+            });
+        else
+            menu.addAction(theme().icon("plus", accent), tr("Subscribe"), this, [url] {
+                const NetFeeds::Feed f = NetFeeds::instance().feed("rss:" + url);
+                library().addPodcast(url, f.title);
+                library().setStreamInfo(url, f.title, f.image);
+            });
+    }
+
+    // The folder's own subtitle and audio settings (shows, mostly).
+    if (folder && m_loc.section == Section::Videos) {
+        menu.addSeparator();
         const QString dir = m_loc.path;
-        menu.addAction(theme().icon("external", accent), tr("Open in file manager"), this,
+        menu.addAction(theme().icon("subtitles", accent), tr("Edit Subtitle Tracks…"), this,
+                       [this, dir] { (new FolderTracksOverlay(dir, true, window()))->open(); });
+        menu.addAction(theme().icon("audio", accent), tr("Edit Audio Tracks…"), this,
+                       [this, dir] { (new FolderTracksOverlay(dir, false, window()))->open(); });
+    }
+
+    menu.addSeparator();
+    const Library::Pin here = pinForHere();
+    if (!here.kind.isEmpty()) {
+        if (library().isPinned(here.kind, here.target))
+            menu.addAction(theme().icon("pin", accent), tr("Unpin from Sidebar"), this,
+                           [here] { library().unpin(here.kind, here.target); });
+        else
+            menu.addAction(theme().icon("pin", accent), tr("Pin to Sidebar"), this, [here] { library().pin(here); });
+    }
+    menu.addAction(theme().icon("refresh", accent), tr("Resync"), this, &LibraryView::resync)
+        ->setToolTip(tr("Look at the files again: new and removed media, thumbnails, tags"));
+    if (folder && !music)
+        menu.addAction(theme().icon("info", accent), tr("Info…"), this,
+                       [this, dir = m_loc.path] { emit infoRequested(dir); });
+    if (folder) {
+        const QString dir = m_loc.path;
+        menu.addAction(theme().icon("external", accent), tr("Open in File Manager"), this,
                        [dir] { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
     }
-    if (m_loc.section == Section::Videos || m_loc.section == Section::Music || m_loc.section == Section::Home)
-        menu.addAction(theme().icon("folder", accent), tr("Add a library folder…"), this, &LibraryView::addFolderRequested);
-    menu.addAction(theme().icon("refresh", accent), tr("Refresh"), this, [this] {
-        if (m_loc.section == Section::Music)
-            musicIndex().rescan();
-        reload();
-    });
     menu.exec(m_moreBtn->mapToGlobal(QPoint(0, m_moreBtn->height() + 4)));
 }

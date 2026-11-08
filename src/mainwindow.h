@@ -117,6 +117,10 @@ private:
     Toast *m_toast;
 
     View m_view = View::Library;
+    class MiniPlayer *m_mini = nullptr;
+    bool m_miniDismissed = false; // closed for the current item
+    bool m_libraryQueue = false;  // the queue panel beside the library
+    void updateMiniPlayer();
     bool m_sidebar = true;     // rail + side panel visible in player view
     bool m_sidePanel = true;   // side panel (beyond the rail) open
     bool m_panelOpen = false;  // queue / bookmarks / chapters panel on the right

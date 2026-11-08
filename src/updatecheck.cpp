@@ -9,7 +9,11 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
 #include <QRegularExpression>
+#include <QSaveFile>
 
 UpdateCheck &UpdateCheck::instance()
 {
@@ -54,6 +58,57 @@ bool UpdateCheck::updatedByPacman()
 {
     return QFileInfo::exists("/usr/bin/pacman") &&
            QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath() == "/usr/bin/vmp";
+}
+
+bool UpdateCheck::canSelfUpdate()
+{
+    const QString image = qEnvironmentVariable("APPIMAGE");
+    return !image.isEmpty() && QFileInfo(image).isFile() && QFileInfo(QFileInfo(image).absolutePath()).isWritable();
+}
+
+void UpdateCheck::installUpdate()
+{
+    if (!canSelfUpdate() || m_appImageUrl.isEmpty()) {
+        emit installed(false, tr("There's no AppImage to download for this release."));
+        return;
+    }
+    if (!m_net)
+        m_net = new QNetworkAccessManager(this);
+    QNetworkRequest req{QUrl(m_appImageUrl)};
+    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" + currentVersion());
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setTransferTimeout(60000);
+    // Written next to the running AppImage, then renamed over it: the running
+    // copy stays intact (Linux keeps the old file open) until VMP restarts.
+    const QString target = qEnvironmentVariable("APPIMAGE");
+    auto *file = new QSaveFile(target, this);
+    if (!file->open(QIODevice::WriteOnly)) {
+        emit installed(false, tr("Can't write next to %1.").arg(target));
+        file->deleteLater();
+        return;
+    }
+    QNetworkReply *reply = m_net->get(req);
+    connect(reply, &QNetworkReply::readyRead, file, [reply, file] { file->write(reply->readAll()); });
+    connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 got, qint64 total) {
+        if (total > 0)
+            emit progress(int(got * 100 / total));
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, file, target] {
+        reply->deleteLater();
+        file->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            file->cancelWriting();
+            emit installed(false, tr("The download failed (%1).").arg(reply->errorString()));
+            return;
+        }
+        file->write(reply->readAll());
+        if (!file->commit()) {
+            emit installed(false, tr("Couldn't replace %1.").arg(target));
+            return;
+        }
+        QFile::setPermissions(target, QFile::permissions(target) | QFile::ExeOwner | QFile::ExeGroup | QFile::ExeOther);
+        emit installed(true, {});
+    });
 }
 
 void UpdateCheck::checkAutomatically()
@@ -101,6 +156,10 @@ void UpdateCheck::run(bool manual)
         if (version.startsWith('v'))
             version.remove(0, 1);
         const QString page = o.value("html_url").toString();
+        m_appImageUrl.clear();
+        for (const QJsonValue &a : o.value("assets").toArray())
+            if (a.toObject().value("name").toString().endsWith("-x86_64.AppImage"))
+                m_appImageUrl = a.toObject().value("browser_download_url").toString();
         if (version.isEmpty()) {
             emit finished(false, {}, {}, tr("GitHub's answer didn't include a version."), manual);
             return;

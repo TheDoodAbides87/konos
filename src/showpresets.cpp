@@ -43,6 +43,19 @@ void ShowPresets::load()
     for (auto it = folders.begin(); it != folders.end(); ++it)
         m_folders.insert(it.key(), it.value().toString());
     m_base = root.value("base").toObject();
+    const QJsonObject tracks = root.value("folderTracks").toObject();
+    for (auto it = tracks.begin(); it != tracks.end(); ++it) {
+        const QJsonObject o = it.value().toObject();
+        FolderTracks t;
+        t.subRule = o.value("sub").toString();
+        t.audioRule = o.value("audio").toString();
+        const QJsonObject subs = o.value("subFiles").toObject(), audio = o.value("audioFiles").toObject();
+        for (auto f = subs.begin(); f != subs.end(); ++f)
+            t.subFiles.insert(f.key(), f.value().toString());
+        for (auto f = audio.begin(); f != audio.end(); ++f)
+            t.audioFiles.insert(f.key(), f.value().toString());
+        m_folderTracks.insert(it.key(), t);
+    }
     m_active = root.value("active").toString();
     if (!m_presets.contains(m_active))
         m_active.clear();
@@ -55,7 +68,17 @@ void ShowPresets::save() const
         presets.insert(it.key(), it.value());
     for (auto it = m_folders.begin(); it != m_folders.end(); ++it)
         folders.insert(it.key(), it.value());
-    const QJsonObject root{{"presets", presets}, {"folders", folders}, {"base", m_base}, {"active", m_active}};
+    QJsonObject tracks;
+    for (auto it = m_folderTracks.begin(); it != m_folderTracks.end(); ++it) {
+        QJsonObject subs, audio;
+        for (auto f = it->subFiles.begin(); f != it->subFiles.end(); ++f)
+            subs.insert(f.key(), f.value());
+        for (auto f = it->audioFiles.begin(); f != it->audioFiles.end(); ++f)
+            audio.insert(f.key(), f.value());
+        tracks.insert(it.key(), QJsonObject{{"sub", it->subRule}, {"audio", it->audioRule}, {"subFiles", subs}, {"audioFiles", audio}});
+    }
+    const QJsonObject root{{"presets", presets}, {"folders", folders}, {"base", m_base}, {"active", m_active},
+                           {"folderTracks", tracks}};
     QDir().mkpath(QFileInfo(presetsFile()).absolutePath());
     QFile f(presetsFile());
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -262,6 +285,45 @@ void ShowPresets::remove(const QString &name)
 }
 
 // ---------------------------------------------------------------------------
+// Folder track settings
+
+void ShowPresets::setFolderTracks(const QString &folder, const FolderTracks &tracks)
+{
+    if (tracks.isEmpty())
+        m_folderTracks.remove(folder);
+    else
+        m_folderTracks.insert(folder, tracks);
+    save();
+    emit changed();
+}
+
+QString ShowPresets::attachedFile(const QString &location, bool subtitles) const
+{
+    const QString folder = folderOf(location);
+    if (folder.isEmpty() || !m_folderTracks.contains(folder))
+        return {};
+    const FolderTracks &t = m_folderTracks[folder];
+    const QString file = (subtitles ? t.subFiles : t.audioFiles).value(QFileInfo(location).fileName());
+    return QFileInfo::exists(file) ? file : QString();
+}
+
+QString ShowPresets::folderRule(bool subtitles) const
+{
+    QString dir = currentFolder();
+    while (!dir.isEmpty()) {
+        const FolderTracks t = m_folderTracks.value(dir);
+        const QString rule = subtitles ? t.subRule : t.audioRule;
+        if (!rule.isEmpty())
+            return rule;
+        const QString up = QFileInfo(dir).absolutePath();
+        if (up == dir)
+            break;
+        dir = up;
+    }
+    return {};
+}
+
+// ---------------------------------------------------------------------------
 // Default tracks
 
 static QLocale::Language languageOf(const QString &code)
@@ -320,10 +382,11 @@ void ShowPresets::applyDefaultTracks()
         }
         return -2;
     };
-    const int sub = pick(prefs().string("subs/default"), m_player->subtitleTracks());
+    const QString subRule = folderRule(true), audioRule = folderRule(false);
+    const int sub = pick(subRule.isEmpty() ? prefs().string("subs/default") : subRule, m_player->subtitleTracks());
     if (sub != -2 && sub != m_player->subtitleTrack())
         m_player->setSubtitleTrack(sub);
-    const int audio = pick(prefs().string("audio/default"), m_player->audioTracks());
+    const int audio = pick(audioRule.isEmpty() ? prefs().string("audio/default") : audioRule, m_player->audioTracks());
     if (audio >= 0 && audio != m_player->audioTrack())
         m_player->setAudioTrack(audio);
 }

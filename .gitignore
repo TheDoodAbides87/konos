@@ -1,5 +1,6 @@
 build/
 build-*/
+build-appimage/
 .qmake.stash
 *.AppImage
 
@@ -13,9 +14,7 @@ dist/
 # Design reference screenshots from the VLC community redesign (not ours to publish)
 VLC Redesign (Community)/
 
-# Left over from the OmaVideo AppImage packaging; delete these
-packaging/AppRun
-packaging/build-appimage.sh
+# Left over from OmaVideo; delete these
 packaging/omavideo.desktop
 packaging/omavideo-omarchy.desktop
 resources/omavideo.svg

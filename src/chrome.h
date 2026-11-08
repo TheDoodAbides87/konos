@@ -64,9 +64,13 @@ public:
 signals:
     void sectionClicked(Section section);
     void addClicked(const QPoint &globalPos);
+    void pinClicked(const Library::Pin &pin);
 
 private:
+    void rebuildPins();
     QList<QPair<Section, IconButton *>> m_items;
+    class QVBoxLayout *m_pins;
+    QWidget *m_pinRule;
     bool m_expanded;
 };
 

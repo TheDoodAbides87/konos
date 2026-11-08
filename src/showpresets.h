@@ -44,6 +44,19 @@ public:
     // Rule text for menus: "" (leave it to the file), "off", "track:N", "lang:xx".
     static QString describeRule(const QString &rule);
 
+    // A library folder's own track settings (the library's ⋯ → Edit Subtitle
+    // Tracks / Edit Audio Tracks): default track rules that win over the
+    // global ones, and files attached to its videos (file name → subtitle or
+    // audio file), added whenever that video opens.
+    struct FolderTracks {
+        QString subRule, audioRule; // empty: use the global default
+        QHash<QString, QString> subFiles, audioFiles;
+        bool isEmpty() const { return subRule.isEmpty() && audioRule.isEmpty() && subFiles.isEmpty() && audioFiles.isEmpty(); }
+    };
+    FolderTracks folderTracks(const QString &folder) const { return m_folderTracks.value(folder); }
+    void setFolderTracks(const QString &folder, const FolderTracks &tracks);
+    QString attachedFile(const QString &location, bool subtitles) const;
+
 signals:
     void changed();
 
@@ -59,6 +72,8 @@ private:
     Player *m_player = nullptr;
     QHash<QString, QJsonObject> m_presets;
     QHash<QString, QString> m_folders; // folder → preset name
+    QHash<QString, FolderTracks> m_folderTracks;
+    QString folderRule(bool subtitles) const; // for what's playing, from its folder or one above
     QJsonObject m_base;                // settings to go back to after a preset
     QString m_active;
 };

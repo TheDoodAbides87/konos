@@ -21,12 +21,19 @@ enum class Section { Home, Videos, Music, Network, Playlists, Recent, Queue };
 QString sectionName(Section s);
 QString sectionIcon(Section s);
 
-// Paints grid tiles (thumbnail, progress bar, name) and list rows.
+// Columns of the details view.
+enum class Column { Name, Artist, Album, Year, Duration, Size, Modified, Progress, Songs, Detail };
+
+// Paints grid tiles (thumbnail, progress bar, name), list rows and details rows.
 class EntryDelegate : public QStyledItemDelegate {
     Q_OBJECT
 public:
     explicit EntryDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
     bool grid = true;
+    QList<Column> columns; // non-empty: the details view (a list with columns)
+    // Where each column sits in a row of this width (the header uses the same).
+    QList<QPair<Column, QRectF>> columnRects(const QRectF &row) const;
+    static QString columnTitle(Column c);
     QSize tileSize = {300, 214};
     bool square = false; // Music: tiles shaped like album art, with a detail line
     void paint(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
@@ -37,6 +44,10 @@ public:
     TileButton tileButtonAt(const QRect &itemRect, const QModelIndex &index, const QPoint &pos) const;
     QPoint mouse{-1, -1}; // in viewport coordinates, for the buttons' hover look
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+
+private:
+    void paintDetails(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const;
+    QPixmap thumbnail(const QModelIndex &index) const;
 };
 
 // Media library browser: breadcrumbs, sort/view/search, grid or list.
@@ -56,6 +67,11 @@ public:
     void setQueue(const QStringList &items, int current);
     void setNowPlaying(const QString &location);
     void refresh();
+    void openPin(const Library::Pin &pin);
+    // Dev hooks and tests: the view mode (0 grid, 1 list, 2 details) and sort.
+    void setViewMode(int mode);
+    void setSort(int key, bool desc);
+    void showNetwork(const QString &path); // "", "radio", "podcasts", "m3u:<url>", "rss:<url>"
 
 signals:
     void playRequested(const QStringList &items, int index);
@@ -67,6 +83,7 @@ signals:
     void queueRemoveRowsRequested(QList<int> rows); // several at once (queue positions)
     void queueClearRequested();
     void openNetworkRequested();
+    void infoRequested(const QString &location);
     void addFolderRequested();
     void popOutRequested();
     void addFilesRequested();                                // queue tab's +
@@ -112,6 +129,16 @@ private:
     void loadSort();
     void saveSort();
     void setGridView(bool grid, bool remember = true);
+    void applyViewMode(int mode, bool remember = true); // 0 grid, 1 list, 2 details
+    int viewMode() const;
+    QList<Column> detailColumns() const;
+    void addPinAction(class QMenu &menu, const QModelIndex &index);
+    Library::Pin pinFor(const QModelIndex &index) const;
+    Library::Pin pinForHere() const;
+    void reloadNetwork(int &order, QString &empty);
+    QString networkFeedKey() const; // what the open Network view lists
+    void addFilesHere();
+    void resync();
     QStringList roots() const;
     QStringList currentPlayable(int *indexOfPath = nullptr, const QString &path = QString()) const;
     int filterForSection() const;
@@ -129,7 +156,7 @@ private:
     Location m_loc;
     QList<Location> m_back, m_forward;
     QHash<QObject *, Location> m_crumbTargets;
-    QHash<int, bool> m_gridForSection;
+    QHash<int, int> m_viewForSection; // 0 grid, 1 list, 2 details
     int m_sortKey = 0; // SortKey in libraryview.cpp
     bool m_sortDesc = false;
     bool m_eatRelease = false; // a press on a tile button was handled; keep its release from the list
@@ -145,6 +172,9 @@ private:
     QListView *m_view;
     EntryDelegate *m_delegate;
     QLabel *m_empty;
+    class DetailsHeader *m_detailsHeader = nullptr;
+    QString m_remoteQuery;    // Radio / Podcasts: searching online for this
+    class QTimer *m_searchTimer = nullptr;
     class HomePage *m_home = nullptr; // full mode's Home
 
     QWidget *m_header;

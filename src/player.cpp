@@ -478,8 +478,11 @@ void Player::open(const QString &location, qint64 startMs, bool startPaused)
     m_visualActive = !m_visualizer.isEmpty() && Library::isAudioFile(isUrl ? url.path() : location);
     VlcVars::setString(m_mp, "audio-visual", m_visualActive ? (m_visualizer == "goom" ? "goom" : "visual") : "");
     VlcVars::setString(m_mp, "effect-list", m_visualActive && m_visualizer != "goom" ? m_visualizer : "spectrum");
-    for (const QString &slave : m_slaves)
-        libvlc_media_slaves_add(m_media, libvlc_media_slave_type_subtitle, 4, slave.toUtf8().constData());
+    for (const QString &slave : m_slaves) // "audio:" marks extra audio tracks
+        if (slave.startsWith("audio:"))
+            libvlc_media_slaves_add(m_media, libvlc_media_slave_type_audio, 4, slave.mid(6).toUtf8().constData());
+        else
+            libvlc_media_slaves_add(m_media, libvlc_media_slave_type_subtitle, 4, slave.toUtf8().constData());
 
     if (m_recording) {
         QDir().mkpath(prefs().string("record/dir"));
@@ -1003,6 +1006,17 @@ bool Player::addSubtitleFile(const QString &path)
     if (libvlc_media_player_add_slave(m_mp, libvlc_media_slave_type_subtitle, uri.toUtf8().constData(), true) != 0)
         return false;
     m_slaves << uri;
+    return true;
+}
+
+bool Player::addAudioFile(const QString &path)
+{
+    if (!m_mp)
+        return false;
+    const QString uri = QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
+    if (libvlc_media_player_add_slave(m_mp, libvlc_media_slave_type_audio, uri.toUtf8().constData(), true) != 0)
+        return false;
+    m_slaves << "audio:" + uri;
     return true;
 }
 

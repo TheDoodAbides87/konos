@@ -112,6 +112,7 @@ public:
     void setSubtitleTrack(int id);
     void setVideoTrack(int id);
     bool addSubtitleFile(const QString &path);
+    bool addAudioFile(const QString &path); // an extra audio track (a dub), selected
 
     qint64 audioDelay() const { return m_audioDelay; }
     void setAudioDelay(qint64 ms);

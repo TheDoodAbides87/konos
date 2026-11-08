@@ -75,14 +75,42 @@ public:
     QStringList frequentFolders(int count) const;
 
     QStringList streams() const { return m_streams; }
-    void addStream(const QString &url);
+    void addStream(const QString &url, const QString &name = QString());
     void removeStream(const QString &url);
+    // A name for a URL (a radio station, a channel, a podcast); empty if none.
+    QString streamName(const QString &url) const { return m_names.value(url).first; }
+    QString streamImage(const QString &url) const { return m_names.value(url).second; }
+    void setStreamInfo(const QString &url, const QString &name, const QString &image = QString());
+
+    // Channel lists (M3U links that list streams) and podcast feeds, saved
+    // under Network.
+    QStringList channelLists() const { return m_channelLists; }
+    void addChannelList(const QString &url, const QString &name = QString());
+    void removeChannelList(const QString &url);
+    QStringList podcasts() const { return m_podcasts; }
+    void addPodcast(const QString &feedUrl, const QString &name = QString());
+    void removePodcast(const QString &feedUrl);
+
+    // Shortcuts in the sidebar, under the sections.
+    struct Pin {
+        QString kind;   // "folder", "playlist", "file", "music", "channels", "podcast"
+        QString target; // path, playlist name, URL, or for music "view\ngroup\nalbum"
+        QString name;
+        int section = 0; // folders: Section (Videos or Music)
+        bool operator==(const Pin &o) const { return kind == o.kind && target == o.target; }
+    };
+    QList<Pin> pins() const { return m_pins; }
+    bool isPinned(const QString &kind, const QString &target) const;
+    void pin(const Pin &pin);
+    void unpin(const QString &kind, const QString &target);
+    void movePin(int from, int to);
 
 signals:
     void recentChanged();
     void positionsChanged();
     void playlistsChanged();
     void streamsChanged();
+    void pinsChanged();
 
 private:
     Library();
@@ -95,6 +123,10 @@ private:
     QHash<QString, QStringList> m_playlists;
     QStringList m_playlistOrder;
     QStringList m_streams;
+    QStringList m_channelLists;
+    QHash<QString, QPair<QString, QString>> m_names; // saved URL → (name, picture)
+    QStringList m_podcasts;
+    QList<Pin> m_pins;
     QHash<QString, Meta> m_meta;
     QHash<QString, int> m_folderVisits;
     QTimer m_saveTimer;

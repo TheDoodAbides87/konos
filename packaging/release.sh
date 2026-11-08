@@ -8,9 +8,12 @@
 #
 # Each release carries the package plus a fresh repository database listing
 # only that package, so "latest/download" always serves a consistent repo.
+# It also carries the AppImage for other distributions, which the app
+# downloads to update itself.
 #
 #   packaging/release.sh               build, then publish (asks first)
-#   packaging/release.sh --build-only  build the package into dist/ only
+#   packaging/release.sh --build-only  build the package and AppImage into dist/ only
+#   NO_APPIMAGE=1 packaging/release.sh  leave the AppImage out
 #
 # Needs: base-devel (makepkg), pacman (repo-add) and, to publish, gh logged in.
 set -euo pipefail
@@ -37,12 +40,19 @@ if [ $BUILD_ONLY = 0 ] && [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
-echo ">> source archive of HEAD"
-git archive --format=tar.gz --prefix="vmp-$PKGVER/" -o "$ARCH_DIR/vmp-$PKGVER.tar.gz" HEAD
+if [ $BUILD_ONLY = 1 ] && [ -n "$(git status --porcelain)" ]; then
+    # A test build of uncommitted work: the files git knows about or would add.
+    echo ">> source archive of the working tree (uncommitted changes included)"
+    git ls-files -z --cached --others --exclude-standard | grep -zv '^VLC Redesign (Community)/' |
+        tar --null -T - --transform "s,^,vmp-$PKGVER/," -czf "$ARCH_DIR/vmp-$PKGVER.tar.gz"
+else
+    echo ">> source archive of HEAD"
+    git archive --format=tar.gz --prefix="vmp-$PKGVER/" -o "$ARCH_DIR/vmp-$PKGVER.tar.gz" HEAD
+fi
 
 echo ">> makepkg"
 mkdir -p "$DIST"
-find "$DIST" -maxdepth 1 -type f -name 'vmp*' -delete
+find "$DIST" -maxdepth 1 -type f \( -name 'vmp*' -o -name 'VMP-*.AppImage' \) -delete
 (cd "$ARCH_DIR" && PKGDEST="$DIST" makepkg --force --cleanbuild --clean)
 PKG="$(find "$DIST" -maxdepth 1 -name "vmp-$PKGVER-*.pkg.tar.zst" | head -n1)"
 
@@ -53,11 +63,26 @@ for f in vmp.db vmp.files; do
     cp --remove-destination "$(readlink -f "$DIST/$f")" "$DIST/$f"
 done
 echo ">> built: $PKG"
+APPIMAGE=""
+if [ -z "${NO_APPIMAGE:-}" ]; then
+    echo ">> AppImage"
+    "$ROOT/packaging/build-appimage.sh"
+    APPIMAGE="$(find "$DIST" -maxdepth 1 -name "VMP-*-x86_64.AppImage" | head -n1)"
+fi
 [ $BUILD_ONLY = 1 ] && exit 0
 
 # Release notes: this version's section of the changelog.
 NOTES="$DIST/notes.md"
 awk -v v="## $VERSION " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > "$NOTES"
+cat >> "$NOTES" <<'CREDITS'
+
+---
+
+VMP is an overhaul of VLC: VLC's engine (libVLC, by VideoLAN) with a new
+interface. The design is by [Juxtopposed](https://www.youtube.com/@juxtopposed),
+from [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324).
+VMP is independent and not affiliated with VideoLAN or Juxtopposed.
+CREDITS
 
 echo
 echo "About to publish $TAG to https://github.com/$REPO (public) with:"
@@ -69,5 +94,5 @@ read -r -p "Publish? [y/N] " answer
 # skips pre-releases.
 gh release create "$TAG" --repo "$REPO" --title "VMP $VERSION${CHANNEL:+ $CHANNEL}" \
     --notes-file "$NOTES" --latest \
-    "$PKG" "$DIST/vmp.db" "$DIST/vmp.db.tar.gz" "$DIST/vmp.files" "$DIST/vmp.files.tar.gz"
+    "$PKG" "$DIST/vmp.db" "$DIST/vmp.db.tar.gz" "$DIST/vmp.files" "$DIST/vmp.files.tar.gz" ${APPIMAGE:+"$APPIMAGE"}
 echo ">> published $TAG"
