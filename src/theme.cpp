@@ -15,7 +15,7 @@
 #include <QSvgRenderer>
 #include <QTimer>
 
-#ifdef VMP_OMARCHY
+#ifdef KONOS_OMARCHY
 static constexpr const char *kModePref = "omarchy/theme";
 static constexpr const char *kAccentPref = "omarchy/accent";
 #else
@@ -159,7 +159,7 @@ QList<QColor> Theme::accentChoices()
     QList<QColor> c = {QColor(0xE8, 0x83, 0x1C), QColor(0xD0, 0x4E, 0x34), QColor(0xB8, 0x9B, 0x2A),
                        QColor(0x2A, 0xA1, 0x45), QColor(0x1F, 0x9D, 0xB8), QColor(0x33, 0x66, 0xD6),
                        QColor(0x8F, 0x45, 0xF2), QColor(0xEC, 0x50, 0xA8), QColor(0xA0, 0xA0, 0xA0)};
-#ifdef VMP_OMARCHY
+#ifdef KONOS_OMARCHY
     const Theme &t = instance();
     c << (t.m_omLoaded ? t.m_omAccent : c.first());
 #endif
@@ -169,7 +169,7 @@ QList<QColor> Theme::accentChoices()
 QStringList Theme::accentNames()
 {
     QStringList n = {"Orange", "Red", "Olive", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"};
-#ifdef VMP_OMARCHY
+#ifdef KONOS_OMARCHY
     n << QCoreApplication::translate("Theme", "Omarchy theme");
 #endif
     return n;
@@ -179,7 +179,7 @@ QStringList Theme::modeNames()
 {
     QStringList n = {QCoreApplication::translate("Theme", "Dark"), QCoreApplication::translate("Theme", "Light"),
                      QCoreApplication::translate("Theme", "System")};
-#ifdef VMP_OMARCHY
+#ifdef KONOS_OMARCHY
     n << QCoreApplication::translate("Theme", "Omarchy");
 #endif
     return n;
@@ -238,7 +238,7 @@ Theme::Theme()
             emit changed();
     });
 
-#ifdef VMP_OMARCHY
+#ifdef KONOS_OMARCHY
     // omarchy-theme-set replaces current/theme wholesale, so watch the parent
     // directory too; the file watch is lost with the old copy and re-added.
     m_omWatcher = new QFileSystemWatcher(this);
@@ -442,7 +442,7 @@ QIcon Theme::icon(const QString &name, const QColor &color) const
 
 void Theme::paintLogo(QPainter *p, const QRectF &r, const QColor &accent)
 {
-    // The VMP mark: a blocky traffic cone stood on its tip, with a V cut down
+    // The Konos mark: a blocky traffic cone stood on its tip, with a V cut down
     // into it from the top. Same rows as packaging/make-icon.py, which draws
     // the app icon (keep the two in sync).
     struct Row {

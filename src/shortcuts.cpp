@@ -71,7 +71,7 @@ Shortcuts::Shortcuts()
         {"savePlaylist", open, tr("Save playlist to file"), {K("Ctrl+Y")}},
         {"convert", open, tr("Convert / save"), {K("Ctrl+R")}},
         {"stream", open, tr("Stream"), {K("Ctrl+S")}},
-        {"about", open, tr("About VMP"), {K("Shift+F1")}},
+        {"about", open, tr("About Konos"), {K("Shift+F1")}},
     };
 }
 

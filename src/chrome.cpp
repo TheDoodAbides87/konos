@@ -107,7 +107,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent)
     connect(m_max, &IconButton::clicked, this, &TitleBar::maximizeRequested);
     connect(m_full, &IconButton::clicked, this, &TitleBar::fullscreenRequested);
     connect(m_close, &IconButton::clicked, this, &TitleBar::closeRequested);
-    setTitle(QStringLiteral("VMP"));
+    setTitle(QStringLiteral("Konos Media Player"));
 }
 
 bool TitleBar::eventFilter(QObject *obj, QEvent *event)

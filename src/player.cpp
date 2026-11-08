@@ -193,8 +193,8 @@ void Player::createInstance()
         m_error = err ? QString::fromUtf8(err) : tr("libVLC could not be initialised. Are VLC's plugins installed?");
         return;
     }
-    libvlc_set_user_agent(m_vlc, "VMP", "VMP/" VMP_VERSION);
-    libvlc_set_app_id(m_vlc, "vmp", VMP_VERSION, "vmp");
+    libvlc_set_user_agent(m_vlc, "Konos", "Konos/" KONOS_VERSION);
+    libvlc_set_app_id(m_vlc, "konos", KONOS_VERSION, "konos");
     libvlc_log_set(m_vlc, vlcLog, this);
 
     // Modules report problems such as "needs a library for AACS decoding" as

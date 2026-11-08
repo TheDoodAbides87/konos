@@ -18,23 +18,23 @@
 #include <QSettings>
 #include <QStandardPaths>
 
-// VMP was called OmaVideo (0.2–0.4) and "VLC Redesign" before that. On first
-// launch, copy the newest older settings and library (not caches, which
-// rebuild themselves).
+// Konos was called VMP (0.5), OmaVideo (0.2–0.4) and "VLC Redesign" before
+// that. On first launch, copy the newest older settings and library (not
+// caches, which rebuild themselves).
 static void migrateOldNames()
 {
     const QString config = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     const QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    const QString newConf = config + "/vmp/vmp.conf";
+    const QString newConf = config + "/konos/konos.conf";
     const QString newData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (QFile::exists(newConf) || QDir(newData).exists())
         return;
-    for (const QString old : {QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
+    for (const QString old : {QStringLiteral("vmp"), QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
         const QString oldConf = config + "/" + old + "/" + old + ".conf";
         const QDir oldData(data + "/" + old + "/" + old);
         if (!QFile::exists(oldConf) && !oldData.exists())
             continue;
-        QDir().mkpath(config + "/vmp");
+        QDir().mkpath(config + "/konos");
         QFile::copy(oldConf, newConf);
         for (QDirIterator it(oldData.path(), QDir::Files | QDir::Hidden, QDirIterator::Subdirectories); it.hasNext();) {
             const QString from = it.next();
@@ -48,11 +48,11 @@ static void migrateOldNames()
 
 int main(int argc, char *argv[])
 {
-    QApplication::setApplicationName("vmp");
-    QApplication::setOrganizationName("vmp");
-    QApplication::setApplicationDisplayName("VMP");
-    QApplication::setApplicationVersion(VMP_VERSION "-" VMP_CHANNEL);
-    QApplication::setDesktopFileName(VMP_APP_ID);
+    QApplication::setApplicationName("konos");
+    QApplication::setOrganizationName("konos");
+    QApplication::setApplicationDisplayName("Konos Media Player");
+    QApplication::setApplicationVersion(KONOS_VERSION "-" KONOS_CHANNEL);
+    QApplication::setDesktopFileName(KONOS_APP_ID);
     QApplication app(argc, argv);
     migrateOldNames();
     {
@@ -72,11 +72,11 @@ int main(int argc, char *argv[])
     font.setPixelSize(13);
     font.setHintingPreference(QFont::PreferNoHinting);
     app.setFont(font);
-    app.setWindowIcon(QIcon(":/vmp.svg"));
+    app.setWindowIcon(QIcon(":/konos.svg"));
     app.setStyle(new AppStyle);
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("Vibes Media Player (VMP): a media player built on libVLC");
+    parser.setApplicationDescription("Konos Media Player: a media player built on libVLC");
     parser.addHelpOption();
     parser.addVersionOption();
     QCommandLineOption enqueue("enqueue", "Add the given media to the play queue instead of playing it.");

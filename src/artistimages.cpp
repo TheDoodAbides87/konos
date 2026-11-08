@@ -32,7 +32,7 @@ QString normalised(const QString &name)
 QNetworkRequest request(const QUrl &url)
 {
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" VMP_VERSION);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" KONOS_VERSION);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(15000);
     return req;
@@ -170,7 +170,7 @@ void ArtistImages::store(const QString &name, const QByteArray &data, std::funct
     // Re-encode as JPEG so any picture format works and the file stays small.
     QImage image = QImage::fromData(data);
     if (image.isNull()) {
-        done(tr("That isn't a picture VMP can read."));
+        done(tr("That isn't a picture Konos can read."));
         return;
     }
     if (image.width() > 1000 || image.height() > 1000)

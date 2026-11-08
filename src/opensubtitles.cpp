@@ -13,7 +13,7 @@
 #include <QRegularExpression>
 #include <QtEndian>
 
-static const char *kUserAgent = "VMP v" VMP_VERSION;
+static const char *kUserAgent = "Konos v" KONOS_VERSION;
 
 OpenSubtitles &OpenSubtitles::instance()
 {
@@ -36,9 +36,9 @@ OpenSubtitles::OpenSubtitles() : m_net(new QNetworkAccessManager(this))
 QString OpenSubtitles::apiKey() const
 {
     const QString key = prefs().string("opensubtitles/apiKey").trimmed();
-#ifdef VMP_OPENSUBTITLES_KEY
+#ifdef KONOS_OPENSUBTITLES_KEY
     if (key.isEmpty())
-        return QStringLiteral(VMP_OPENSUBTITLES_KEY);
+        return QStringLiteral(KONOS_OPENSUBTITLES_KEY);
 #endif
     return key;
 }
@@ -60,7 +60,7 @@ QNetworkRequest OpenSubtitles::request(const QString &path, const QUrlQuery &que
     // Signed-in accounts may be sent to another host (VIP).
     const QString host = prefs().string("opensubtitles/baseUrl").isEmpty() ? QStringLiteral("api.opensubtitles.com")
                                                                             : prefs().string("opensubtitles/baseUrl");
-#ifdef VMP_DEVHOOKS
+#ifdef KONOS_DEVHOOKS
     // Test builds can point at a mock server ("http://127.0.0.1:8765").
     QUrl url((host.contains("://") ? host : "https://" + host) + "/api/v1" + path);
 #else

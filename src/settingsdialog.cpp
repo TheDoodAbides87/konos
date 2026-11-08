@@ -495,7 +495,7 @@ QWidget *SettingsOverlay::pageGeneral()
     v->addSpacing(16);
     v->addWidget(sectionHeading(tr("Updates")));
     v->addWidget(settingRow(tr("Check for updates"), prefToggle("updates/check", this),
-                            tr("Once a day, ask GitHub whether a newer VMP is out. Nothing else is sent.")));
+                            tr("Once a day, ask GitHub whether a newer Konos is out. Nothing else is sent.")));
     auto *checkNow = new QPushButton(tr("Check Now"));
     checkNow->setCursor(Qt::PointingHandCursor);
     auto *updateStatus = note(UpdateCheck::updatedByPacman()
@@ -525,7 +525,7 @@ QWidget *SettingsOverlay::pageGeneral()
             [updateNow, updateStatus](bool ok, const QString &error) {
                 updateNow->setEnabled(!ok);
                 updateNow->setVisible(!ok);
-                updateStatus->setText(ok ? tr("Update installed. It starts the next time you open VMP.")
+                updateStatus->setText(ok ? tr("Update installed. It starts the next time you open Konos.")
                                          : error.toHtmlEscaped());
             });
     connect(checkNow, &QPushButton::clicked, this, [checkNow, updateStatus] {
@@ -540,11 +540,11 @@ QWidget *SettingsOverlay::pageGeneral()
                 if (!error.isEmpty())
                     updateStatus->setText(error.toHtmlEscaped());
                 else if (!newer)
-                    updateStatus->setText(tr("VMP %1 is the latest version.").arg(UpdateCheck::currentVersion()));
+                    updateStatus->setText(tr("Konos %1 is the latest version.").arg(UpdateCheck::currentVersion()));
                 else
                     updateStatus->setText(
-                        (UpdateCheck::updatedByPacman() ? tr("VMP %1 is out. Update with: sudo pacman -Syu")
-                                                        : tr("VMP %1 is out."))
+                        (UpdateCheck::updatedByPacman() ? tr("Konos %1 is out. Update with: sudo pacman -Syu")
+                                                        : tr("Konos %1 is out."))
                             .arg(version.toHtmlEscaped()) +
                         QString(" · <a href=\"%1\">%2</a>").arg(page.toHtmlEscaped(), tr("What's new")));
             });
@@ -1199,7 +1199,7 @@ QWidget *SettingsOverlay::pageExtensions()
     auto *v = pageLayout(page);
     page->setObjectName("ExtensionsContent");
     v->addWidget(sectionHeading(tr("About")));
-    v->addWidget(note(tr("Vibes Media Player %1").arg(QStringLiteral(VMP_VERSION_LABEL VMP_EDITION))));
+    v->addWidget(note(tr("Konos Media Player %1").arg(QStringLiteral(KONOS_VERSION_LABEL KONOS_EDITION))));
     v->addWidget(note(tr("libVLC %1 · %2").arg(QString::fromUtf8(libvlc_get_version()),
                                                 QString::fromUtf8(libvlc_get_compiler()))));
     v->addWidget(note(tr("The filter modules below come from VLC's plugin folder and power the audio and "

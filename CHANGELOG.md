@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.6.0 (beta) — 2026-11-07
+
+Group D of the changes from the redesign video: menus and dialogs
+(12:56–13:04, 15:56–17:32).
+
+**VMP is now Konos** (Konos Media Player), after the Greek word for cone. The
+package, app, settings folder and GitHub repositories have the new name; your
+settings and library carry over on first launch. On Arch, `sudo pacman -Syu`
+swaps `vmp` for `konos`. Rename `[vmp]` to `[konos]` in `/etc/pacman.conf` and
+point it at `konos-releases` (see the README) when convenient: the old entry
+keeps working for now.
+
+### Added
+- **The main menu from the video** (12:56): the title bar's menu now lists
+  Open File, Open Multiple Files, Open Directory, Open Disc, Open Network
+  Stream, Open Capture Device, Open Location from Clipboard, Open Recent,
+  Save Playlist to File, Convert / Save, Stream, Keyboard Shortcuts, Plugins
+  & Extensions, Settings and About, with the video's keys. Right-clicking the
+  video still gives the playback menu.
+- **Open Capture Device**: a camera (with sound from any input), the screen
+  (X11 sessions only: VLC 3 can't capture a Wayland screen), or a sound input.
+- **Open Location from Clipboard**: copied files play at once; copied
+  addresses open in the network stream dialog to check first.
+- **Save Playlist to File**: the queue as `.m3u8` or `.xspf`.
+- **Convert / Save**: re-encode files to H.264 or H.265 MP4, Theora OGG, MP3,
+  FLAC, Ogg Vorbis or WAV, optionally scaled down; several files in a row,
+  with progress. The originals stay as they are.
+- **Stream**: send what's playing (or a file) over HTTP to other devices on
+  the network (re-encoded so anything can play it, or as it is), or cast it
+  to a Chromecast.
+- **Keyboard Shortcuts** (15:56): every shortcut in one searchable dialog,
+  each with a main and a second key that can be changed; a key taken from one
+  action is removed from the other. Settings → Controls lists the current keys.
+- **About VMP**: version, credits, licences.
+- **Advanced Options on every settings page** (16:16, 18:48):
+  - Interface: mini player and queue beside the library.
+  - Privacy: radio and podcast directories on or off.
+  - Controls: what double-clicking the video does; sideways scrolling.
+  - Playback: go back a few seconds when resuming; skip remembering
+    positions in short items.
+  - Video: drop late frames.
+  - Audio: keep the pitch at other speeds, ReplayGain, audio system.
+  - Subtitles: text encoding for old files; extra subtitle folders.
+  - Library: show hidden files.
+  - Network: HTTP proxy; reconnect dropped streams.
+  - Performance: decoding threads; faster, rougher decoding.
+  - Recording: snapshot size and names.
+  - Extensions: VLC's plugin folder.
+
+### Changed
+- **Subtitle file matching in words** (17:28): "Load subtitle files
+  automatically" is now Off / Any title / Contains title / Title with extra
+  characters / Exact title match, with an example of each. "Off" carries over
+  from the old switch.
+- Keyboard shortcuts in the redesign's places: Ctrl+F opens a directory,
+  Ctrl+C a capture device, Ctrl+V the clipboard, Ctrl+Y saves the playlist,
+  Ctrl+R converts, Ctrl+S streams, Shift+F1 is About.
+
 ## 0.5.0 (beta) — 2026-11-07
 
 Group C of the changes from the redesign video: the library (10:27–13:44),

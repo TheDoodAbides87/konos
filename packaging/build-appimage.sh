@@ -1,23 +1,23 @@
 #!/bin/bash
-# Builds dist/VMP-<version>-<channel>-x86_64.AppImage from this source tree:
-# VMP for other Linux distributions, with libVLC and Qt inside. (On Arch the
+# Builds dist/Konos-<version>-<channel>-x86_64.AppImage from this source tree:
+# Konos for other Linux distributions, with libVLC and Qt inside. (On Arch the
 # pacman package is the way to install it; see packaging/arch.)
 #
 # Needs: qt6-base qt6-svg (qmake6), vlc (libvlc + plugins + headers), taglib, g++, curl.
-# The linuxdeploy / appimagetool AppImages are downloaded to ~/.cache/vmp-tools.
+# The linuxdeploy / appimagetool AppImages are downloaded to ~/.cache/konos-tools.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP=vmp
+APP=konos
 BUILD="$ROOT/build-appimage"
 QMAKE_ARGS=()
 APPDIR="$BUILD/AppDir"
-TOOLS="${TOOLS:-$HOME/.cache/vmp-tools}"
+TOOLS="${TOOLS:-$HOME/.cache/konos-tools}"
 VLC_LIBDIR="${VLC_LIBDIR:-/usr/lib/vlc}"
-VERSION="$(sed -n 's/^#define VMP_VERSION "\(.*\)"/\1/p' "$ROOT/src/version.h")"
-CHANNEL="$(sed -n 's/^#define VMP_CHANNEL "\(.*\)"/\1/p' "$ROOT/src/version.h")"
+VERSION="$(sed -n 's/^#define KONOS_VERSION "\(.*\)"/\1/p' "$ROOT/src/version.h")"
+CHANNEL="$(sed -n 's/^#define KONOS_CHANNEL "\(.*\)"/\1/p' "$ROOT/src/version.h")"
 mkdir -p "$ROOT/dist"
-OUT="$ROOT/dist/VMP-$VERSION${CHANNEL:+-$CHANNEL}-x86_64.AppImage"
+OUT="$ROOT/dist/Konos-$VERSION${CHANNEL:+-$CHANNEL}-x86_64.AppImage"
 
 fetch() {
     mkdir -p "$TOOLS"
@@ -34,7 +34,7 @@ export PATH="$TOOLS:$PATH"
 echo ">> building"
 rm -rf "$APPDIR"
 mkdir -p "$BUILD"
-(cd "$BUILD" && qmake6 "$ROOT/vmp.pro" "${QMAKE_ARGS[@]}" && make -j"$(nproc)" && make install INSTALL_ROOT="$APPDIR")
+(cd "$BUILD" && qmake6 "$ROOT/konos.pro" "${QMAKE_ARGS[@]}" && make -j"$(nproc)" && make install INSTALL_ROOT="$APPDIR")
 
 echo ">> bundling libVLC plugins"
 mkdir -p "$APPDIR/usr/lib/vlc"
@@ -88,7 +88,7 @@ linuxdeploy-x86_64.AppImage \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/$APP" \
     --desktop-file "$ROOT/packaging/$APP.desktop" \
-    --icon-file "$ROOT/resources/vmp.svg" \
+    --icon-file "$ROOT/resources/konos.svg" \
     --custom-apprun "$ROOT/packaging/AppRun" \
     "${DEPLOY_ARGS[@]}" \
     --plugin qt

@@ -1,6 +1,6 @@
-# VMP (Vibes Media Player) — a media player built on libVLC.
+# Konos (Konos Media Player) — a media player built on libVLC.
 TEMPLATE = app
-TARGET = vmp
+TARGET = konos
 QT += widgets svg openglwidgets dbus network
 CONFIG += c++17 release
 CONFIG -= debug_and_release
@@ -10,17 +10,17 @@ INCLUDEPATH += /usr/include/vlc/plugins
 LIBS += -lvlc -lvlccore -ltag
 
 # Developer-only UI scripting for screenshots: qmake CONFIG+=devhooks
-devhooks: DEFINES += VMP_DEVHOOKS
+devhooks: DEFINES += KONOS_DEVHOOKS
 devhooks: QT += testlib
 
 # OpenSubtitles API key baked into this build (else users add one in Settings):
 #   OPENSUBTITLES_API_KEY=... qmake6
 OS_KEY = $$(OPENSUBTITLES_API_KEY)
-!isEmpty(OS_KEY): DEFINES += VMP_OPENSUBTITLES_KEY=\\\"$$OS_KEY\\\"
+!isEmpty(OS_KEY): DEFINES += KONOS_OPENSUBTITLES_KEY=\\\"$$OS_KEY\\\"
 
 # Omarchy build: also follows the Omarchy desktop theme (qmake CONFIG+=omarchy).
 # The Arch package is built this way.
-omarchy: DEFINES += VMP_OMARCHY
+omarchy: DEFINES += KONOS_OMARCHY
 
 SOURCES += \
     src/main.cpp \
@@ -106,9 +106,9 @@ RESOURCES += resources/resources.qrc
 
 target.path = /usr/bin
 desktop.path = /usr/share/applications
-desktop.files = packaging/vmp.desktop
+desktop.files = packaging/konos.desktop
 icon.path = /usr/share/icons/hicolor/scalable/apps
-icon.files = resources/vmp.svg
-license.path = /usr/share/licenses/vmp
+icon.files = resources/konos.svg
+license.path = /usr/share/licenses/konos
 license.files = LICENSE resources/fonts/Inter-LICENSE.txt
 INSTALLS += target desktop icon license

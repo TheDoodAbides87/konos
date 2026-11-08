@@ -714,7 +714,7 @@ void SubtitleOverlay::fetchLink()
     }
     static QNetworkAccessManager *net = new QNetworkAccessManager(qApp);
     QNetworkRequest req(url);
-    req.setRawHeader("User-Agent", "VMP");
+    req.setRawHeader("User-Agent", "Konos");
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(30000);
     m_downloading = 0;

@@ -15,4 +15,4 @@ export VLC_DATA_PATH="$HERE/usr/share/vlc"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/vlc${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="$HERE/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
 
-exec "$HERE/usr/bin/vmp" "$@"
+exec "$HERE/usr/bin/konos" "$@"

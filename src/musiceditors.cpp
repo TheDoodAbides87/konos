@@ -415,7 +415,7 @@ void AlbumEditorOverlay::musicBrainz(const QString &path, const QList<QPair<QStr
         url.setQuery(q);
         QNetworkRequest req(url);
         // MusicBrainz asks every program to name itself.
-        req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" VMP_VERSION " ( desktop media player )");
+        req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" KONOS_VERSION " ( desktop media player )");
         req.setRawHeader("Accept", "application/json");
         req.setTransferTimeout(20000);
         QNetworkReply *reply = ArtistImages::instance().network()->get(req);
@@ -610,7 +610,7 @@ void AlbumEditorOverlay::save()
     }
     m_status->setText(tr("Downloading the cover…"));
     QNetworkRequest req(QUrl("https://coverartarchive.org/release/" + m_releaseId + "/front-500"));
-    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" VMP_VERSION " ( desktop media player )");
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" KONOS_VERSION " ( desktop media player )");
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(30000);
     QNetworkReply *reply = ArtistImages::instance().network()->get(req);

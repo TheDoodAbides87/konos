@@ -75,7 +75,7 @@ public:
     QIcon icon(const QString &name, const QColor &color = QColor()) const;
     QPixmap pixmap(const QString &name, const QColor &color, int size, qreal dpr = 2.0) const;
 
-    // Paints the VMP mark (an upside-down cone with a V cut into it) in the accent colour.
+    // Paints the Konos mark (an upside-down cone with a V cut into it) in the accent colour.
     static void paintLogo(class QPainter *p, const QRectF &rect, const QColor &accent);
 
 signals:

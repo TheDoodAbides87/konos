@@ -23,7 +23,7 @@ UpdateCheck &UpdateCheck::instance()
 
 QString UpdateCheck::currentVersion()
 {
-    return QStringLiteral(VMP_VERSION) + (QStringLiteral(VMP_CHANNEL).isEmpty() ? QString() : "-" VMP_CHANNEL);
+    return QStringLiteral(KONOS_VERSION) + (QStringLiteral(KONOS_CHANNEL).isEmpty() ? QString() : "-" KONOS_CHANNEL);
 }
 
 int UpdateCheck::compare(const QString &a, const QString &b)
@@ -57,7 +57,7 @@ int UpdateCheck::compare(const QString &a, const QString &b)
 bool UpdateCheck::updatedByPacman()
 {
     return QFileInfo::exists("/usr/bin/pacman") &&
-           QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath() == "/usr/bin/vmp";
+           QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath() == "/usr/bin/konos";
 }
 
 bool UpdateCheck::canSelfUpdate()
@@ -75,11 +75,11 @@ void UpdateCheck::installUpdate()
     if (!m_net)
         m_net = new QNetworkAccessManager(this);
     QNetworkRequest req{QUrl(m_appImageUrl)};
-    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" + currentVersion());
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" + currentVersion());
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(60000);
     // Written next to the running AppImage, then renamed over it: the running
-    // copy stays intact (Linux keeps the old file open) until VMP restarts.
+    // copy stays intact (Linux keeps the old file open) until Konos restarts.
     const QString target = qEnvironmentVariable("APPIMAGE");
     auto *file = new QSaveFile(target, this);
     if (!file->open(QIODevice::WriteOnly)) {
@@ -133,8 +133,8 @@ void UpdateCheck::run(bool manual)
     m_running = true;
     if (!m_net)
         m_net = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl(QStringLiteral("https://api.github.com/repos/" VMP_RELEASES_REPO "/releases/latest")));
-    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" + currentVersion());
+    QNetworkRequest req(QUrl(QStringLiteral("https://api.github.com/repos/" KONOS_RELEASES_REPO "/releases/latest")));
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" + currentVersion());
     req.setRawHeader("Accept", "application/vnd.github+json");
     req.setTransferTimeout(15000);
     QNetworkReply *reply = m_net->get(req);

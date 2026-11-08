@@ -1,15 +1,17 @@
 # Maintainer: TheDoodVibes87 <TheDoodVibes87@pm.me>
 #
 # Built by packaging/release.sh from a `git archive` of the source tree, then
-# published to the [vmp] pacman repository (the releases repo on GitHub).
+# published to the [konos] pacman repository (the releases repo on GitHub).
 # To build by hand: packaging/release.sh --build-only
 
-pkgname=vmp
+pkgname=konos
 pkgver=0.6.0beta
 pkgrel=1
-pkgdesc="Vibes Media Player: plays videos, music, discs and streams (libVLC)"
+pkgdesc="Konos Media Player: plays videos, music, discs and streams (libVLC)"
 arch=('x86_64')
-url="https://github.com/TheDoodAbides87/vmp-releases"
+url="https://github.com/TheDoodAbides87/konos-releases"
+replaces=('vmp')    # the 0.5 name; pacman -Syu swaps it for konos
+conflicts=('vmp')
 license=('MIT')
 depends=(
     'qt6-base' 'qt6-svg' 'qt6-wayland' 'taglib' 'hicolor-icon-theme'
@@ -25,19 +27,19 @@ optdepends=(
     'ffmpeg: subtitle timeline for subtitles inside videos'
     'ffmpegthumbnailer: faster video thumbnails'
 )
-source=("vmp-$pkgver.tar.gz")
+source=("konos-$pkgver.tar.gz")
 sha256sums=('SKIP')
 options=('!debug')
 
 build() {
-    cd "vmp-$pkgver"
+    cd "konos-$pkgver"
     mkdir -p build
     cd build
-    qmake6 ../vmp.pro CONFIG+=omarchy
+    qmake6 ../konos.pro CONFIG+=omarchy
     make
 }
 
 package() {
-    cd "vmp-$pkgver/build"
+    cd "konos-$pkgver/build"
     make INSTALL_ROOT="$pkgdir" install
 }

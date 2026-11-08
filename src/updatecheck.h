@@ -5,7 +5,7 @@
 class QNetworkAccessManager;
 
 // Asks GitHub for the latest release in the public releases repository
-// (VMP_RELEASES_REPO) and says whether it's newer than this build. Only the
+// (KONOS_RELEASES_REPO) and says whether it's newer than this build. Only the
 // request itself is sent; nothing about the user or their media.
 //
 // The Arch package is updated by pacman from the same releases, so there the

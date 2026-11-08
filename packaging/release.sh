@@ -1,10 +1,10 @@
 #!/bin/bash
 # Builds the Arch package and publishes it as a GitHub release on the public
-# releases repository, which doubles as the [vmp] pacman repository:
+# releases repository, which doubles as the [konos] pacman repository:
 #
-#   [vmp]
+#   [konos]
 #   SigLevel = Optional TrustAll
-#   Server = https://github.com/TheDoodAbides87/vmp-releases/releases/latest/download
+#   Server = https://github.com/TheDoodAbides87/konos-releases/releases/latest/download
 #
 # Each release carries the package plus a fresh repository database listing
 # only that package, so "latest/download" always serves a consistent repo.
@@ -21,9 +21,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARCH_DIR="$ROOT/packaging/arch"
 DIST="$ROOT/dist"
-VERSION="$(sed -n 's/^#define VMP_VERSION "\(.*\)"/\1/p' "$ROOT/src/version.h")"
-CHANNEL="$(sed -n 's/^#define VMP_CHANNEL "\(.*\)"/\1/p' "$ROOT/src/version.h")"
-REPO="$(sed -n 's/^#define VMP_RELEASES_REPO "\(.*\)"/\1/p' "$ROOT/src/version.h")"
+VERSION="$(sed -n 's/^#define KONOS_VERSION "\(.*\)"/\1/p' "$ROOT/src/version.h")"
+CHANNEL="$(sed -n 's/^#define KONOS_CHANNEL "\(.*\)"/\1/p' "$ROOT/src/version.h")"
+REPO="$(sed -n 's/^#define KONOS_RELEASES_REPO "\(.*\)"/\1/p' "$ROOT/src/version.h")"
 PKGVER="$VERSION${CHANNEL}"   # 0.4.0beta: pacman sorts it before 0.4.0
 TAG="v$VERSION${CHANNEL:+-$CHANNEL}"
 BUILD_ONLY=0
@@ -44,30 +44,36 @@ if [ $BUILD_ONLY = 1 ] && [ -n "$(git status --porcelain)" ]; then
     # A test build of uncommitted work: the files git knows about or would add.
     echo ">> source archive of the working tree (uncommitted changes included)"
     git ls-files -z --cached --others --exclude-standard | grep -zv '^VLC Redesign (Community)/' |
-        tar --null -T - --transform "s,^,vmp-$PKGVER/," -czf "$ARCH_DIR/vmp-$PKGVER.tar.gz"
+        tar --null -T - --transform "s,^,konos-$PKGVER/," -czf "$ARCH_DIR/konos-$PKGVER.tar.gz"
 else
     echo ">> source archive of HEAD"
-    git archive --format=tar.gz --prefix="vmp-$PKGVER/" -o "$ARCH_DIR/vmp-$PKGVER.tar.gz" HEAD
+    git archive --format=tar.gz --prefix="konos-$PKGVER/" -o "$ARCH_DIR/konos-$PKGVER.tar.gz" HEAD
 fi
 
 echo ">> makepkg"
 mkdir -p "$DIST"
-find "$DIST" -maxdepth 1 -type f \( -name 'vmp*' -o -name 'VMP-*.AppImage' \) -delete
+find "$DIST" -maxdepth 1 -type f \( -name 'konos*' -o -name 'vmp.*' -o -name 'Konos-*.AppImage' \) -delete
 (cd "$ARCH_DIR" && PKGDEST="$DIST" makepkg --force --cleanbuild --clean)
-PKG="$(find "$DIST" -maxdepth 1 -name "vmp-$PKGVER-*.pkg.tar.zst" | head -n1)"
+PKG="$(find "$DIST" -maxdepth 1 -name "konos-$PKGVER-*.pkg.tar.zst" | head -n1)"
 
 echo ">> repository database"
-repo-add "$DIST/vmp.db.tar.gz" "$PKG"
-# repo-add makes vmp.db / vmp.files symlinks; release assets must be real files.
-for f in vmp.db vmp.files; do
+repo-add "$DIST/konos.db.tar.gz" "$PKG"
+# repo-add makes konos.db / konos.files symlinks; release assets must be real files.
+for f in konos.db konos.files; do
     cp --remove-destination "$(readlink -f "$DIST/$f")" "$DIST/$f"
+done
+# Transition from the 0.5 name: copies under the old [vmp] repo name, so a
+# pacman.conf that still says [vmp] keeps updating (and swaps vmp for konos).
+# Drop these once nobody is on 0.5 any more.
+for f in db files; do
+    cp "$DIST/konos.$f" "$DIST/vmp.$f"
 done
 echo ">> built: $PKG"
 APPIMAGE=""
 if [ -z "${NO_APPIMAGE:-}" ]; then
     echo ">> AppImage"
     "$ROOT/packaging/build-appimage.sh"
-    APPIMAGE="$(find "$DIST" -maxdepth 1 -name "VMP-*-x86_64.AppImage" | head -n1)"
+    APPIMAGE="$(find "$DIST" -maxdepth 1 -name "Konos-*-x86_64.AppImage" | head -n1)"
 fi
 [ $BUILD_ONLY = 1 ] && exit 0
 
@@ -78,12 +84,12 @@ cat >> "$NOTES" <<'CREDITS'
 
 ---
 
-VMP is an overhaul of VLC: VLC's engine (libVLC, by VideoLAN) with a new
+Konos is an overhaul of VLC: VLC's engine (libVLC, by VideoLAN) with a new
 interface. The design is by [Juxtopposed](https://www.youtube.com/@juxtopposed),
 from [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324).
-VMP is independent and not affiliated with VideoLAN or Juxtopposed.
+Konos is independent and not affiliated with VideoLAN or Juxtopposed.
 
-VMP is in early development: it changes often and things may break between
+Konos is in early development: it changes often and things may break between
 releases.
 CREDITS
 
@@ -95,7 +101,7 @@ read -r -p "Publish? [y/N] " answer
 
 # Not a pre-release: releases/latest (which pacman and the update check read)
 # skips pre-releases.
-gh release create "$TAG" --repo "$REPO" --title "VMP $VERSION${CHANNEL:+ $CHANNEL}" \
+gh release create "$TAG" --repo "$REPO" --title "Konos $VERSION${CHANNEL:+ $CHANNEL}" \
     --notes-file "$NOTES" --latest \
-    "$PKG" "$DIST/vmp.db" "$DIST/vmp.db.tar.gz" "$DIST/vmp.files" "$DIST/vmp.files.tar.gz" ${APPIMAGE:+"$APPIMAGE"}
+    "$PKG" "$DIST/konos.db" "$DIST/konos.db.tar.gz" "$DIST/konos.files" "$DIST/konos.files.tar.gz" "$DIST/vmp.db" "$DIST/vmp.files" ${APPIMAGE:+"$APPIMAGE"}
 echo ">> published $TAG"

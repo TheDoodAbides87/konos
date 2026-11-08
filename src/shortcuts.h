@@ -9,7 +9,7 @@
 class QAction;
 class QScrollArea;
 
-// Every keyboard shortcut VMP has, with its default keys and the keys the
+// Every keyboard shortcut Konos has, with its default keys and the keys the
 // user picked instead (stored under "keys/<id>" in the settings file; only
 // changed ones are stored). Each action has up to two keys.
 class Shortcuts : public QObject {

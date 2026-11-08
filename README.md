@@ -1,25 +1,25 @@
-# VMP — Vibes Media Player
+# Konos Media Player
 
-<img src="resources/vmp.svg" width="96" align="right" alt="VMP icon">
+<img src="resources/konos.svg" width="96" align="right" alt="Konos icon">
 
 A desktop media player for videos, music, discs and streams.
 
-> **Early development.** VMP is a beta that changes often: features move,
+> **Early development.** Konos is a beta that changes often: features move,
 > settings may reset, and things can break between releases. Keep that in mind
 > before relying on it.
 
-**VMP is an overhaul of VLC.** It is VLC media player with a new interface:
+**Konos is an overhaul of VLC.** It is VLC media player with a new interface:
 playback, codecs, subtitles, discs, streaming and all audio/video effects come
 from **libVLC 3**, the engine inside VLC, made by the
-[VideoLAN](https://www.videolan.org/) project. What VMP replaces is the
-interface around it, written from scratch in C++/Qt 6. VMP is an independent
+[VideoLAN](https://www.videolan.org/) project. What Konos replaces is the
+interface around it, written from scratch in C++/Qt 6. Konos is an independent
 project, not affiliated with or endorsed by VideoLAN.
 
 **The design is by [Juxtopposed](https://www.youtube.com/@juxtopposed)**,
 from the video [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324).
-VMP builds that redesign as a working player; each release works through a
-part of the video. Juxtopposed isn't involved in VMP, and any rough edges are
-VMP's own.
+Konos builds that redesign as a working player; each release works through a
+part of the video. Juxtopposed isn't involved in Konos, and any rough edges are
+Konos's own.
 
 The icon is a blocky traffic cone stood on its tip with a V cut into it;
 `packaging/make-icon.py` draws it, and `Theme::paintLogo()` draws the same
@@ -27,7 +27,7 @@ shape in the app.
 
 Licensed under the [MIT licence](LICENSE).
 
-**Version 0.5.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
+**Version 0.6.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's implemented
 
@@ -53,6 +53,8 @@ Licensed under the [MIT licence](LICENSE).
 | Per-show presets and default subtitle/audio tracks | `src/showpresets.cpp` |
 | Metadata card over the video | `src/mediainfocard.cpp` |
 | Add Subtitles: computer / OpenSubtitles / link, per file, folder or playlist (`Add Subtitles` mockups) | `src/subtitleoverlay.cpp`, `src/opensubtitles.cpp` |
+| Main menu, Capture Device, Convert / Save, Stream, About | `MainWindow::buildMainMenu`, `src/mediadialogs.cpp` |
+| Keyboard Shortcuts dialog (changeable keys) | `src/shortcuts.cpp` |
 
 All settings are functional: effects apply live, the play queue supports
 shuffle/repeat, playback positions are remembered (and shown as progress bars),
@@ -62,9 +64,14 @@ and recording, snapshots, sleep timer, subtitle sync and styling all work.
 ## Keyboard
 
 Space play/pause · S stop · P/N previous/next · ←/→ seek · Ctrl+←/→ jump 1 min ·
-↑/↓ volume · M mute · F / F11 fullscreen · Ctrl+\ hide UI · Ctrl+B sidebar ·
+↑/↓ volume · M mute · F / F11 fullscreen · Ctrl+\\ hide UI · Ctrl+B sidebar ·
 Ctrl+L library/player · R record · Shift+S snapshot · [ ] = speed ·
-Ctrl+O open · Ctrl+N network stream · Ctrl+D play disc · Ctrl+P settings · Ctrl+Q quit
+Ctrl+O open file · Ctrl+Shift+O open files · Ctrl+F open directory · Ctrl+D disc ·
+Ctrl+N network stream · Ctrl+C capture device · Ctrl+V clipboard ·
+Ctrl+Y save playlist · Ctrl+R convert · Ctrl+S stream · Ctrl+P settings ·
+Shift+F1 about · Ctrl+Q quit
+
+Every key can be changed in the main menu → Keyboard Shortcuts.
 
 In a DVD menu, the arrow keys and Enter (or the mouse) pick menu buttons.
 
@@ -76,22 +83,22 @@ Releases are published as a small pacman repository. Add it to
 `/etc/pacman.conf` once:
 
 ```ini
-[vmp]
+[konos]
 SigLevel = Optional TrustAll
-Server = https://github.com/TheDoodAbides87/vmp-releases/releases/latest/download
+Server = https://github.com/TheDoodAbides87/konos-releases/releases/latest/download
 ```
 
-then `sudo pacman -Sy vmp`. From then on `sudo pacman -Syu` updates VMP with
-the rest of the system, and VMP tells you when a new version is out
+then `sudo pacman -Sy konos`. From then on `sudo pacman -Syu` updates Konos with
+the rest of the system, and Konos tells you when a new version is out
 (Settings → General → Updates).
 
 ### Other Linux distributions (AppImage)
 
-Download `VMP-<version>-x86_64.AppImage` from the
-[releases](https://github.com/TheDoodAbides87/vmp-releases/releases/latest),
+Download `Konos-<version>-x86_64.AppImage` from the
+[releases](https://github.com/TheDoodAbides87/konos-releases/releases/latest),
 make it executable (`chmod +x`) and run it. It has libVLC and Qt inside. When a
-new version is out, VMP offers **Update Now**: it downloads the new AppImage
-over the old one, and the update starts the next time you open VMP.
+new version is out, Konos offers **Update Now**: it downloads the new AppImage
+over the old one, and the update starts the next time you open Konos.
 
 ### macOS and Windows
 
@@ -107,9 +114,9 @@ thumbnails and the subtitle timeline.
 
 ```sh
 mkdir build && cd build
-qmake6 ../vmp.pro            # add CONFIG+=omarchy to follow the Omarchy theme
+qmake6 ../konos.pro            # add CONFIG+=omarchy to follow the Omarchy theme
 make -j$(nproc)
-./vmp [files or URLs…]
+./konos [files or URLs…]
 ```
 
 ### Arch package and releases
@@ -117,7 +124,7 @@ make -j$(nproc)
 ```sh
 ./packaging/release.sh --build-only   # → dist/: the pacman package + repo database, and the AppImage
 ./packaging/release.sh                # build, then publish to the releases repo (asks first)
-./packaging/build-appimage.sh         # just the AppImage → dist/VMP-<version>-x86_64.AppImage
+./packaging/build-appimage.sh         # just the AppImage → dist/Konos-<version>-x86_64.AppImage
 ```
 
 The package is built from the last commit (`git archive HEAD`; with
@@ -129,7 +136,7 @@ version comes from `src/version.h`; keep `pkgver` in the PKGBUILD in step
 (`0.5.0` + `beta` → `0.5.0beta`, which pacman sorts before `0.5.0`).
 
 The source repository is private; built packages go to the public
-`TheDoodAbides87/vmp-releases` repository, which holds only releases, so the
+`TheDoodAbides87/konos-releases` repository, which holds only releases, so the
 app and pacman can download them without a login.
 
 ### OpenSubtitles
@@ -139,7 +146,7 @@ sign up at opensubtitles.com, then create one under Profile → API consumers.
 Paste it into Settings → Subtitles, or build it in:
 
 ```sh
-OPENSUBTITLES_API_KEY=yourkey qmake6 ../vmp.pro
+OPENSUBTITLES_API_KEY=yourkey qmake6 ../konos.pro
 ```
 
 A built-in key can be read out of the binary, so only do that for builds you
@@ -147,7 +154,7 @@ keep to yourself.
 
 ### Omarchy theme
 
-`qmake6 CONFIG+=omarchy` (the Arch package is built this way) makes VMP take
+`qmake6 CONFIG+=omarchy` (the Arch package is built this way) makes Konos take
 its colours from the current Omarchy theme
 (`~/.local/state/omarchy/current/theme/colors.toml`) and follow theme changes
 while running. Settings → Interface gains an **Omarchy** theme and an
@@ -170,7 +177,7 @@ Outside Omarchy it falls back to the stock dark look.
   driven through libvlccore object variables (`src/vlcvars.cpp`); this ties the
   build to VLC 3.0.x.
 - Developer screenshots: build with `qmake6 CONFIG+=devhooks` to enable the
-  `VMP_SCRIPT` UI automation hook (not present in normal builds).
+  `KONOS_SCRIPT` UI automation hook (not present in normal builds).
 - Settings and the library carry over from OmaVideo (and "VLC Redesign") on
   first launch.
 
@@ -184,5 +191,5 @@ Outside Omarchy it falls back to the stock dark look.
   libVLC and its plugins unchanged.
 - **Interface toolkit:** [Qt 6](https://www.qt.io/) (LGPL 3); tags are read and
   written with [TagLib](https://taglib.org/).
-- "VLC" and the VLC cone are trademarks of VideoLAN. VMP is an independent
+- "VLC" and the VLC cone are trademarks of VideoLAN. Konos is an independent
   project and uses neither as its name or icon.

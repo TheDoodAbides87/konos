@@ -23,7 +23,7 @@ namespace {
 QNetworkRequest request(const QUrl &url)
 {
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::UserAgentHeader, "VMP/" + UpdateCheck::currentVersion());
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Konos/" + UpdateCheck::currentVersion());
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(20000);
     // Some feed hosts (NPR's CDN) stall Qt's HTTP/2 requests; HTTP/1.1 works everywhere.

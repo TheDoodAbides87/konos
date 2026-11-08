@@ -44,7 +44,7 @@
 
 namespace {
 // Rows of the play queue being dragged within it (their positions, comma-separated).
-const char *const kQueueRowsMime = "application/x-vmp-queue-rows";
+const char *const kQueueRowsMime = "application/x-konos-queue-rows";
 
 enum Roles {
     KindRole = Qt::UserRole + 1,

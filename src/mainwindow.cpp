@@ -73,7 +73,7 @@ static QString mediaFilter();
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
-    setWindowTitle(QStringLiteral("VMP"));
+    setWindowTitle(QStringLiteral("Konos Media Player"));
     setWindowFlag(Qt::FramelessWindowHint);
     setAcceptDrops(true);
     setMinimumSize(760, 480);
@@ -200,7 +200,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         showPlayer();
     if (prefs().flag("startup/restoreSession"))
         QMetaObject::invokeMethod(this, &MainWindow::restoreSession, Qt::QueuedConnection);
-#ifdef VMP_DEVHOOKS
+#ifdef KONOS_DEVHOOKS
     runDevScript();
 #endif
 }
@@ -260,7 +260,7 @@ void MainWindow::buildUi()
                     return;
                 m_updateToast->raise();
                 if (UpdateCheck::canSelfUpdate() && !UpdateCheck::instance().appImageUrl().isEmpty()) {
-                    m_updateToast->showAt(Toast::Bottom, tr("VMP %1 is out.").arg(version), tr("Update Now"), [this] {
+                    m_updateToast->showAt(Toast::Bottom, tr("Konos %1 is out.").arg(version), tr("Update Now"), [this] {
                         m_updateToast->showAt(Toast::Bottom, tr("Downloading the update…"), {}, {}, 600000);
                         UpdateCheck::instance().installUpdate();
                     }, 20000);
@@ -268,8 +268,8 @@ void MainWindow::buildUi()
                 }
                 m_updateToast->showAt(Toast::Bottom,
                                       UpdateCheck::updatedByPacman()
-                                          ? tr("VMP %1 is out. Update with: sudo pacman -Syu").arg(version)
-                                          : tr("VMP %1 is out.").arg(version),
+                                          ? tr("Konos %1 is out. Update with: sudo pacman -Syu").arg(version)
+                                          : tr("Konos %1 is out.").arg(version),
                                       tr("What's New"), [page] { QDesktopServices::openUrl(QUrl(page)); }, 15000);
             });
     connect(&UpdateCheck::instance(), &UpdateCheck::progress, this, [this](int percent) {
@@ -278,11 +278,11 @@ void MainWindow::buildUi()
     connect(&UpdateCheck::instance(), &UpdateCheck::installed, this, [this](bool ok, const QString &error) {
         m_updateToast->raise();
         if (ok)
-            m_updateToast->showAt(Toast::Bottom, tr("Update installed. It starts the next time you open VMP."), {}, {}, 10000);
+            m_updateToast->showAt(Toast::Bottom, tr("Update installed. It starts the next time you open Konos."), {}, {}, 10000);
         else
             m_updateToast->showAt(Toast::Bottom, error, {}, {}, 10000);
     });
-    if (qEnvironmentVariableIsEmpty("VMP_SCRIPT")) // not during scripted test runs
+    if (qEnvironmentVariableIsEmpty("KONOS_SCRIPT")) // not during scripted test runs
         QTimer::singleShot(5000, this, [] { UpdateCheck::instance().checkAutomatically(); });
     m_timeline = new SubtitleTimeline(m_player, m_videoArea);
     m_timeline->hide();
@@ -641,7 +641,7 @@ void MainWindow::createActions()
     m_actNext = make("next", tr("Next Item"), "next", [this] { next(true); });
     m_actRecord = make("record", tr("Record"), "record", [this] { toggleRecording(); });
     m_actHideUi = make("hide-ui", tr("Hide UI"), "hideUi", [this] { setHideUi(!m_hideUi); });
-    m_actQuit = make("quit", tr("Quit VMP"), "quit", [this] { close(); });
+    m_actQuit = make("quit", tr("Quit Konos"), "quit", [this] { close(); });
     m_actFullscreen = make("fullscreen", tr("Fullscreen"), "fullscreen", [this] { setFullscreen(!m_fullscreen); });
     m_actSnapshot = make("camera", tr("Take Snapshot"), "snapshot", [this] { takeSnapshot(); });
     m_actMute = make("mute", tr("Mute"), "mute", [this] {
@@ -659,7 +659,7 @@ void MainWindow::createActions()
     m_actConvert = make("convert", tr("Convert / Save…"), "convert", [this] { openConvert({}); });
     m_actStream = make("upload", tr("Stream…"), "stream", [this] { openStream(); });
     m_actShortcuts = make("keyboard", tr("Keyboard Shortcuts"), "shortcuts", [this] { showShortcuts(); });
-    m_actAbout = make("info", tr("About VMP"), "about", [this] { (new AboutOverlay(this))->open(); });
+    m_actAbout = make("info", tr("About Konos"), "about", [this] { (new AboutOverlay(this))->open(); });
     m_actSettings = make("settings", tr("Settings"), "settings", [this] { m_settings->open(); });
     m_actSidebar = make("sidebar", tr("Toggle Sidebar"), "sidebar", [this] {
         if (m_view == View::Player)
@@ -1240,14 +1240,14 @@ void MainWindow::resizeEvent(QResizeEvent *e)
 
 void MainWindow::updateTitle()
 {
-    QString t = QStringLiteral("VMP");
+    QString t = QStringLiteral("Konos Media Player");
     if (m_player->hasMedia() && m_view == View::Player) {
         t = m_player->title();
         if (!m_player->artist().isEmpty())
             t = m_player->artist() + " — " + t;
     }
     m_title->setTitle(t);
-    setWindowTitle(m_player->hasMedia() ? m_player->title() + " — VMP" : QStringLiteral("VMP"));
+    setWindowTitle(m_player->hasMedia() ? m_player->title() + " — Konos Media Player" : QStringLiteral("Konos Media Player"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1738,7 +1738,7 @@ void MainWindow::setSleepTimer(int minutes)
 void MainWindow::showError(const QString &message)
 {
     if (prefs().flag("startup/confirmDialogs"))
-        QMessageBox::warning(this, QStringLiteral("VMP"), message);
+        QMessageBox::warning(this, QStringLiteral("Konos"), message);
     else
         m_toast->show(message, {}, {}, 5000);
 }
@@ -1750,7 +1750,7 @@ void MainWindow::updateScreensaverInhibit()
     if (!iface.isValid())
         return;
     if (want && !m_inhibitCookie) {
-        const QDBusReply<uint> reply = iface.call("Inhibit", QStringLiteral("VMP"), tr("Playing video"));
+        const QDBusReply<uint> reply = iface.call("Inhibit", QStringLiteral("Konos"), tr("Playing video"));
         if (reply.isValid())
             m_inhibitCookie = reply.value();
     } else if (!want && m_inhibitCookie) {
@@ -2113,9 +2113,9 @@ void MainWindow::closeEvent(QCloseEvent *e)
 
 // ---------------------------------------------------------------------------
 // Developer hook (only in builds made with CONFIG+=devhooks): drive the UI from
-// the VMP_SCRIPT environment variable to capture screenshots.
+// the KONOS_SCRIPT environment variable to capture screenshots.
 
-#ifdef VMP_DEVHOOKS
+#ifdef KONOS_DEVHOOKS
 #include <QProcess>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -2143,7 +2143,7 @@ static void onNextMenu(std::function<void(QMenu *)> fn)
 }
 void MainWindow::runDevScript()
 {
-    const QString script = qEnvironmentVariable("VMP_SCRIPT");
+    const QString script = qEnvironmentVariable("KONOS_SCRIPT");
     if (script.isEmpty())
         return;
     auto sectionFrom = [](const QString &s) {
@@ -2400,7 +2400,7 @@ void MainWindow::runDevScript()
             } else if (cmd == "libmime") { // what dragging the current selection would carry
                 if (auto *view = m_library->findChild<QListView *>("entries"))
                     if (QMimeData *m = view->model()->mimeData(view->selectionModel()->selectedIndexes())) {
-                        qInfo() << "drag" << m->urls() << m->data("application/x-vmp-queue-rows");
+                        qInfo() << "drag" << m->urls() << m->data("application/x-konos-queue-rows");
                         delete m;
                     }
             } else if (cmd == "winsize") { // winsize:w,h
@@ -2495,7 +2495,7 @@ void MainWindow::runDevScript()
                 for (const QString &pair : arg.split('|'))
                     qInfo() << "cmp" << pair << UpdateCheck::compare(pair.section(' ', 0, 0), pair.section(' ', 1, 1));
             } else if (cmd == "fakeupdate") // fakeupdate:version (the notice a newer release would show)
-                emit UpdateCheck::instance().finished(true, arg, "https://github.com/" VMP_RELEASES_REPO "/releases", {}, false);
+                emit UpdateCheck::instance().finished(true, arg, "https://github.com/" KONOS_RELEASES_REPO "/releases", {}, false);
             else if (cmd == "shortcuts")
                 showShortcuts();
             else if (cmd == "keyset") { // keyset:id=Ctrl+K,Alt+K (empty: none; "default": the default)

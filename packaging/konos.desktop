@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=Vibes Media Player
+Name=Konos Media Player
 GenericName=Media Player
 Comment=Play videos, music, discs and streams
-Exec=vmp %U
-Icon=vmp
+Exec=konos %U
+Icon=konos
 Terminal=false
 Categories=AudioVideo;Player;Video;Audio;
 MimeType=video/mp4;video/x-matroska;video/webm;video/x-msvideo;video/quicktime;video/mpeg;video/x-flv;video/ogg;audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;audio/aac;audio/opus;audio/x-vorbis+ogg;application/x-mpegurl;audio/x-mpegurl;
-Keywords=VMP;Player;Video;Audio;Movie;Music;DVD;Subtitles;
-StartupWMClass=vmp
+Keywords=Konos;Player;Video;Audio;Movie;Music;DVD;Subtitles;
+StartupWMClass=konos

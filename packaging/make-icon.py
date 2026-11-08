@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes resources/vmp.svg: the VMP mark.
+"""Writes resources/konos.svg: the Konos mark.
 
 A blocky traffic cone stood on its tip, with a V cut down into it from the
 top, drawn on a block grid (the same grid the Omarchy wordmark uses).
@@ -39,6 +39,6 @@ def svg(fg="#E8831C", stripe="#F2EEE8", tile="#1c1c1c"):
 
 
 if __name__ == "__main__":
-    out = pathlib.Path(__file__).resolve().parent.parent / "resources" / "vmp.svg"
+    out = pathlib.Path(__file__).resolve().parent.parent / "resources" / "konos.svg"
     out.write_text(svg())
     print(out)

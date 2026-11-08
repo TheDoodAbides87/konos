@@ -127,7 +127,7 @@ private:
     QList<libvlc_renderer_item_t *> m_items;
 };
 
-// Main menu → "About VMP".
+// Main menu → "About Konos".
 class AboutOverlay : public PanelOverlay {
     Q_OBJECT
 public:

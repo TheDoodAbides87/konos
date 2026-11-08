@@ -115,7 +115,7 @@ bool SoutJob::start(const QString &location, const QString &sout, const QStringL
         m_vlc = libvlc_new(int(std::size(args)), args);
         if (!m_vlc)
             return false;
-        libvlc_set_user_agent(m_vlc, "VMP", "VMP/" VMP_VERSION);
+        libvlc_set_user_agent(m_vlc, "Konos", "Konos/" KONOS_VERSION);
     }
     const QUrl url(location);
     const bool isUrl = url.isValid() && url.scheme().size() > 1;
@@ -763,27 +763,27 @@ protected:
 };
 } // namespace
 
-AboutOverlay::AboutOverlay(QWidget *window) : PanelOverlay(tr("About VMP"), {560, 470}, window)
+AboutOverlay::AboutOverlay(QWidget *window) : PanelOverlay(tr("About Konos"), {560, 470}, window)
 {
     auto *head = new QHBoxLayout;
     head->setSpacing(18);
     head->addWidget(new LogoWidget);
-    auto *name = new QLabel(QString("<div style='font-size:22px'>Vibes Media Player</div>"
+    auto *name = new QLabel(QString("<div style='font-size:22px'>Konos Media Player</div>"
                                     "<div>%1</div>")
-                                .arg(tr("Version %1").arg(QStringLiteral(VMP_VERSION_LABEL VMP_EDITION))));
+                                .arg(tr("Version %1").arg(QStringLiteral(KONOS_VERSION_LABEL KONOS_EDITION))));
     head->addWidget(name, 1);
     body()->addLayout(head);
 
     auto *text = new QLabel(
-        tr("<p><b>VMP is an overhaul of VLC.</b> Playback, codecs, subtitles, discs and effects come from "
+        tr("<p><b>Konos is an overhaul of VLC.</b> Playback, codecs, subtitles, discs and effects come from "
            "<a href='https://www.videolan.org/vlc/'>libVLC</a> %1, the engine inside VLC, made by VideoLAN and "
-           "the VLC contributors. VMP gives it a new interface.</p>"
+           "the VLC contributors. Konos gives it a new interface.</p>"
            "<p>The design is by <a href='https://www.youtube.com/@juxtopposed'>Juxtopposed</a>, from the video "
            "<a href='https://youtu.be/ERFeOgqk324'>I Redesigned VLC After 25 Years</a>.</p>"
-           "<p>VMP is in early development: it changes often and things may break.</p>"
-           "<p>VMP's own code is MIT-licensed. libVLC is LGPL 2.1 or later; Qt 6 is LGPL 3. VMP is independent "
+           "<p>Konos is in early development: it changes often and things may break.</p>"
+           "<p>Konos's own code is MIT-licensed. libVLC is LGPL 2.1 or later; Qt 6 is LGPL 3. Konos is independent "
            "and not affiliated with VideoLAN or Juxtopposed. “VLC” is a trademark of VideoLAN.</p>"
-           "<p><a href='https://github.com/" VMP_RELEASES_REPO "/releases'>Releases and what's new</a></p>")
+           "<p><a href='https://github.com/" KONOS_RELEASES_REPO "/releases'>Releases and what's new</a></p>")
             .arg(QString::fromUtf8(libvlc_get_version()).section(' ', 0, 0)));
     text->setWordWrap(true);
     text->setTextFormat(Qt::RichText);

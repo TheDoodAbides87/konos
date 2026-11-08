@@ -94,7 +94,7 @@ private:
 
     QMenu *buildMainMenu();    // the title bar menu
     QMenu *buildContextMenu(); // right-click on the video
-#ifdef VMP_DEVHOOKS
+#ifdef KONOS_DEVHOOKS
     void runDevScript();
 #endif
     void restoreSession();
