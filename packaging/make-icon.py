@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
 """Writes resources/konos.svg: the Konos mark.
 
-A blocky traffic cone stood on its tip, with a V cut down into it from the
-top, drawn on a block grid (the same grid the Omarchy wordmark uses).
-Theme::paintLogo() draws the same rows (keep the two in sync).
+A split K on a block grid (the same grid the Omarchy wordmark uses): a
+straight stem, a one-block gap, then the two arms as a chevron that meets in
+the middle. On the app icon, the lower leg is a second colour.
+Theme::paintLogo() draws the same shape in one colour (keep the two in sync).
 """
 import pathlib
 
-# (outer [left, right), V cut [left, right) or None) per row, on a 16-block grid.
-ROWS = [
-    ((1, 15), (4, 12)), ((1, 15), (4, 12)),
-    ((2, 14), (5, 11)), ((2, 14), (5, 11)),
-    ((3, 13), (6, 10)), ((3, 13), (6, 10)),
-    ((4, 12), (7, 9)), ((4, 12), (7, 9)),
-    ((5, 11), None), ((5, 11), None),
-    ((6, 10), None), ((6, 10), None),
-    ((7, 9), None),
-]
-
-# Rows painted in the stripe colour: a traffic cone's reflective bands. Only
-# the full-size icon has them; the small in-app mark is a plain V.
-STRIPES = {3, 7}
+ROWS = 13           # rows of blocks; the arms meet on the middle one
+STEM = (1, 4)       # stem columns [left, right) on a 16-block grid
+GAP = 1             # empty columns between the stem and the arms
+ARM = 4             # arm width in blocks
+RIGHT = 15          # rightmost column used (exclusive)
 
 UNIT, OFF = 14, 16  # 16 blocks of 14 px on a 256 px canvas
-TOP = (256 - len(ROWS) * UNIT) // 2  # centred vertically
+TOP = (256 - ROWS * UNIT) // 2  # centred vertically
 
 
-def svg(fg="#E8831C", stripe="#F2EEE8", tile="#1c1c1c"):
+def arm(r):
+    """The arm's [left, right) columns on row r."""
+    left = STEM[1] + GAP + abs(r - ROWS // 2)
+    return left, min(left + ARM, RIGHT)
+
+
+def svg(fg="#8B7CF6", leg="#3DD6C0", tile="#16141F"):
     rects = []
-    for r, ((left, right), cut) in enumerate(ROWS):
+    for r in range(ROWS):
         y = TOP + r * UNIT
-        fill = f' fill="{stripe}"' if r in STRIPES else ""
-        for a, b in [(left, right)] if not cut else [(left, cut[0]), (cut[1], right)]:
-            rects.append(f'<rect x="{OFF + a * UNIT}" y="{y}" width="{(b - a) * UNIT}" height="{UNIT}"{fill}/>')
+        for (a, b), colour in ((STEM, fg), (arm(r), leg if r > ROWS // 2 else fg)):
+            rects.append(f'<rect x="{OFF + a * UNIT}" y="{y}" width="{(b - a) * UNIT}" height="{UNIT}" fill="{colour}"/>')
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" shape-rendering="crispEdges">\n'
             f'  <rect x="8" y="8" width="240" height="240" rx="56" fill="{tile}"/>\n'
-            f'  <g fill="{fg}">\n    ' + "\n    ".join(rects) + "\n  </g>\n</svg>\n")
+            "  " + "\n  ".join(rects) + "\n</svg>\n")
 
 
 if __name__ == "__main__":

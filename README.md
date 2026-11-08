@@ -21,7 +21,7 @@ Konos builds that redesign as a working player; each release works through a
 part of the video. Juxtopposed isn't involved in Konos, and any rough edges are
 Konos's own.
 
-The icon is a blocky traffic cone stood on its tip with a V cut into it;
+The icon is a split K on a block grid: a stem, a gap, and chevron arms;
 `packaging/make-icon.py` draws it, and `Theme::paintLogo()` draws the same
 shape in the app.
 

@@ -442,31 +442,21 @@ QIcon Theme::icon(const QString &name, const QColor &color) const
 
 void Theme::paintLogo(QPainter *p, const QRectF &r, const QColor &accent)
 {
-    // The Konos mark: a blocky traffic cone stood on its tip, with a V cut down
-    // into it from the top. Same rows as packaging/make-icon.py, which draws
-    // the app icon (keep the two in sync).
-    struct Row {
-        int left, right, slotLeft, slotRight;
-    };
-    static const Row rows[] = {
-        {1, 15, 4, 12}, {1, 15, 4, 12}, {2, 14, 5, 11}, {2, 14, 5, 11}, {3, 13, 6, 10},
-        {3, 13, 6, 10}, {4, 12, 7, 9},  {4, 12, 7, 9},  {5, 11, 0, 0},  {5, 11, 0, 0},
-        {6, 10, 0, 0},  {6, 10, 0, 0},  {7, 9, 0, 0},
-    };
+    // The Konos mark: a split K on a block grid. A straight stem, a one-block
+    // gap, then the two arms as a chevron meeting on the middle row. Same
+    // shape as packaging/make-icon.py, which draws the app icon (keep the two
+    // in sync).
+    constexpr int rows = 13, stemLeft = 1, stemRight = 4, gap = 1, armWidth = 4, rightEdge = 15;
     // 13 rows of 14 used columns (1..15) fill the square; blocks stay square.
     const qreal unit = qMin(r.width() / 14.0, r.height() / 13.0);
     const QPointF o(r.center().x() - 8 * unit, r.center().y() - 6.5 * unit);
     QPainterPath shape;
-    for (int i = 0; i < int(std::size(rows)); ++i) {
-        const Row &row = rows[i];
+    for (int i = 0; i < rows; ++i) {
         const qreal y = o.y() + i * unit;
         auto block = [&](int a, int b) { shape.addRect(QRectF(o.x() + a * unit, y, (b - a) * unit, unit)); };
-        if (row.slotRight > row.slotLeft) {
-            block(row.left, row.slotLeft);
-            block(row.slotRight, row.right);
-        } else {
-            block(row.left, row.right);
-        }
+        block(stemLeft, stemRight);
+        const int armLeft = stemRight + gap + std::abs(i - rows / 2);
+        block(armLeft, std::min(armLeft + armWidth, rightEdge));
     }
     p->save();
     p->setRenderHint(QPainter::Antialiasing, unit < 4); // crisp blocks, smoothed when tiny
