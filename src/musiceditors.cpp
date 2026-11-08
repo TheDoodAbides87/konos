@@ -34,6 +34,9 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QTreeWidget>
+#include <QCollator>
+#include <QDropEvent>
+#include <QMimeData>
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <taglib/fileref.h>
@@ -133,6 +136,83 @@ void downloadCover(QObject *context, const QString &front, std::function<void(co
             done({}, QObject::tr("Couldn't download the cover (%1).").arg(reply->errorString()));
     });
 }
+
+// Edit Metadata's songs. The number, title and artist columns are places on
+// the album; the files are what goes in them. Dragging a row onto another
+// moves its file there (the files between shift along), so files whose tags
+// got mixed up can be lined up with the right titles. Each row keeps its
+// file's path in column 3's UserRole.
+class TrackTable : public QTreeWidget {
+public:
+    TrackTable()
+    {
+        setObjectName("TrackTable");
+        setDragEnabled(true);
+        setAcceptDrops(true);
+        viewport()->setAcceptDrops(true);
+        setDragDropMode(QAbstractItemView::InternalMove);
+        setDropIndicatorShown(true);
+        setSelectionMode(QAbstractItemView::SingleSelection);
+    }
+
+    void moveFile(int from, int to)
+    {
+        const int n = topLevelItemCount();
+        if (from == to || from < 0 || to < 0 || from >= n || to >= n)
+            return;
+        QList<std::pair<QString, QString>> files; // name, path
+        for (int i = 0; i < n; ++i)
+            files.append({topLevelItem(i)->text(3), topLevelItem(i)->data(3, Qt::UserRole).toString()});
+        files.move(from, to);
+        setFiles(files);
+        setCurrentItem(topLevelItem(to));
+    }
+
+    // Files in the order of their names (01 …, 02 …), for files named right but tagged wrong.
+    void orderFilesByName()
+    {
+        QStringList paths;
+        for (int i = 0; i < topLevelItemCount(); ++i)
+            paths << topLevelItem(i)->data(3, Qt::UserRole).toString();
+        QCollator collator;
+        collator.setNumericMode(true);
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        std::stable_sort(paths.begin(), paths.end(), [&collator](const QString &a, const QString &b) {
+            return collator.compare(QFileInfo(a).fileName(), QFileInfo(b).fileName()) < 0;
+        });
+        QList<std::pair<QString, QString>> files;
+        for (const QString &p : paths)
+            files.append({QFileInfo(p).fileName(), p});
+        setFiles(files);
+    }
+
+protected:
+    void dropEvent(QDropEvent *e) override
+    {
+        // The file moves to the row it's dropped on; the rows themselves stay.
+        const QModelIndex at = indexAt(e->position().toPoint());
+        const int from = currentIndex().row();
+        const int to = at.isValid() ? at.row() : topLevelItemCount() - 1;
+        e->setDropAction(Qt::IgnoreAction);
+        e->accept();
+        stopAutoScroll();
+        setState(NoState);
+        if (e->mimeData()->hasFormat("application/x-qabstractitemmodeldatalist"))
+            moveFile(from, to);
+        viewport()->update();
+    }
+
+private:
+    void setFiles(const QList<std::pair<QString, QString>> &files)
+    {
+        for (int i = 0; i < files.size() && i < topLevelItemCount(); ++i) {
+            QTreeWidgetItem *item = topLevelItem(i);
+            item->setText(3, files[i].first);
+            item->setToolTip(3, files[i].second);
+            item->setData(3, Qt::UserRole, files[i].second);
+        }
+    }
+};
 
 // The note under editors that write into files.
 QWidget *overwriteNote(const QString &text)
@@ -473,9 +553,15 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
 
     // Songs: number, title, artist (double-click to edit), file.
     auto *left = new QVBoxLayout;
-    left->addWidget(caption(tr("Songs — double-click to edit")));
-    m_table = new QTreeWidget;
-    m_table->setObjectName("TrackTable");
+    auto *songsBar = new QHBoxLayout;
+    songsBar->addWidget(caption(tr("Songs — double-click a name to edit it; drag a row to move its file")), 1);
+    auto *byName = button(tr("Order Files by Name"));
+    byName->setToolTip(tr("Put the files in the order of their names (01, 02, …), for files named right but tagged wrong"));
+    songsBar->addWidget(byName);
+    left->addLayout(songsBar);
+    auto *table = new TrackTable;
+    m_table = table;
+    connect(byName, &QPushButton::clicked, this, [table] { table->orderFilesByName(); });
     m_table->setRootIsDecorated(false);
     m_table->setColumnCount(4);
     m_table->setHeaderLabels({tr("#"), tr("Title"), tr("Artist"), tr("File")});
@@ -484,8 +570,8 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     m_table->header()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_table->header()->setSectionResizeMode(2, QHeaderView::Interactive);
     m_table->header()->setSectionResizeMode(3, QHeaderView::Interactive);
-    m_table->setColumnWidth(2, 140);
-    m_table->setColumnWidth(3, 110);
+    m_table->setColumnWidth(2, 130);
+    m_table->setColumnWidth(3, 220);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     for (const QString &p : tracks) {
         const MusicIndex::Track *t = musicIndex().track(p);
@@ -496,6 +582,7 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
         item->setText(2, t ? t->artist : QString());
         item->setText(3, QFileInfo(p).fileName());
         item->setToolTip(3, p);
+        item->setData(3, Qt::UserRole, p);
         item->setForeground(3, theme().pal().textMuted);
     }
     connect(m_table, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item, int column) {
@@ -697,9 +784,9 @@ void AlbumEditorOverlay::save()
     m_save->setEnabled(false);
     QStringList failed;
     const int rows = m_table->topLevelItemCount();
-    for (int i = 0; i < rows && i < m_tracks.size(); ++i) {
-        const QString path = m_tracks[i];
+    for (int i = 0; i < rows; ++i) {
         const QTreeWidgetItem *item = m_table->topLevelItem(i);
+        const QString path = item->data(3, Qt::UserRole).toString(); // the file now in this place
         TagLib::FileRef file(QFile::encodeName(path).constData());
         if (file.isNull() || !file.tag()) {
             failed << QFileInfo(path).fileName();

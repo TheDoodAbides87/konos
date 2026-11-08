@@ -77,6 +77,8 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QTest>
+#include <QTreeWidget>
+#include <QMimeData>
 // Runs `fn` on the next menu that opens (synthetic input can't keep a
 // Wayland popup open, but its Show event still arrives).
 static void onNextMenu(std::function<void(QMenu *)> fn)
@@ -613,6 +615,17 @@ void MainWindow::runDevScript()
                             QMetaObject::invokeMethod(b, &QAbstractButton::click, Qt::QueuedConnection);
                 } else
                     qInfo() << "no dialog open";
+            } else if (cmd == "trackdrop") { // trackdrop:from,to (a row of Edit Metadata's songs dropped on another)
+                if (auto *t = findChild<QTreeWidget *>("TrackTable")) {
+                    t->setCurrentItem(t->topLevelItem(arg.section(',', 0, 0).toInt()));
+                    const QPointF at = t->visualItemRect(t->topLevelItem(arg.section(',', 1).toInt())).center();
+                    QMimeData mime;
+                    mime.setData("application/x-qabstractitemmodeldatalist", "row");
+                    QDropEvent drop(at, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+                    QApplication::sendEvent(t->viewport(), &drop);
+                    for (int i = 0; i < t->topLevelItemCount(); ++i)
+                        qInfo() << "track" << t->topLevelItem(i)->text(0) << t->topLevelItem(i)->text(1) << t->topLevelItem(i)->text(3);
+                }
             } else if (cmd == "dialogshot") { // dialogshot:path
                 if (QWidget *w = QApplication::activeModalWidget())
                     w->grab().save(arg);
