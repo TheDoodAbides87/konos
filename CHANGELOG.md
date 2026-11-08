@@ -33,7 +33,7 @@ keeps working for now.
 - **Keyboard Shortcuts** (15:56): every shortcut in one searchable dialog,
   each with a main and a second key that can be changed; a key taken from one
   action is removed from the other. Settings → Controls lists the current keys.
-- **About VMP**: version, credits, licences.
+- **About Konos**: version, credits, licences.
 - **Advanced Options on every settings page** (16:16, 18:48):
   - Interface: mini player and queue beside the library.
   - Privacy: radio and podcast directories on or off.
