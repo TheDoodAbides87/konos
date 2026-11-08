@@ -369,16 +369,16 @@ void MainWindow::runDevScript()
                     if (!sel.isEmpty()) {
                         onNextMenu([arg](QMenu *m) {
                             QList<QAction *> actions = m->actions();
-                            QString want = arg;
-                            if (arg.contains('>')) {
+                            const QStringList steps = arg.split('>');
+                            const QString want = steps.last();
+                            for (int i = 0; i + 1 < steps.size(); ++i) // down through the submenus
                                 for (QAction *a : actions)
-                                    if (a->text() == arg.section('>', 0, 0) && a->menu()) {
+                                    if (a->text() == steps[i] && a->menu()) {
                                         for (QAction *sub : a->menu()->actions())
-                                            qInfo() << "submenu item" << sub->text();
+                                            qInfo() << "submenu item" << steps[i] << sub->text();
                                         actions = a->menu()->actions();
+                                        break;
                                     }
-                                want = arg.section('>', 1);
-                            }
                             for (QAction *a : actions)
                                 if (a->text() == want) {
                                     QMetaObject::invokeMethod(a, &QAction::trigger, Qt::QueuedConnection);
@@ -626,6 +626,16 @@ void MainWindow::runDevScript()
                     for (int i = 0; i < t->topLevelItemCount(); ++i)
                         qInfo() << "track" << t->topLevelItem(i)->text(0) << t->topLevelItem(i)->text(1) << t->topLevelItem(i)->text(3);
                 }
+            } else if (cmd == "overlayfield") { // overlayfield:n=text (the nth text field in the open overlay)
+                QList<QLineEdit *> fields;
+                for (auto *overlay : findChildren<PanelOverlay *>())
+                    if (overlay->isVisible())
+                        for (auto *e : overlay->findChildren<QLineEdit *>())
+                            if (e->isVisible())
+                                fields << e;
+                if (QLineEdit *e = fields.value(arg.section('=', 0, 0).toInt()))
+                    e->setText(arg.section('=', 1));
+                qInfo() << "fields" << fields.size();
             } else if (cmd == "dialogshot") { // dialogshot:path
                 if (QWidget *w = QApplication::activeModalWidget())
                     w->grab().save(arg);

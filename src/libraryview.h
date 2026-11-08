@@ -8,6 +8,7 @@
 #include <QWidget>
 
 class AlbumTracksPanel;
+class QMenu;
 class IconButton;
 class QStandardItem;
 class QHBoxLayout;
@@ -175,6 +176,9 @@ private:
     bool isMusicQueue() const;
     // Album grids: a click opens the album's songs under its row.
     bool isAlbumTile(const QModelIndex &index) const;
+    // Edit → Edit Metadata / Download Album Art for album or artist tiles
+    // (one or several): false if they aren't albums or artists.
+    bool addEditMenu(QMenu &menu, const QModelIndexList &tiles);
     void openAlbumPanel(const QString &albumPath);
     void closeAlbumPanel(bool forget = true);
     int gridColumns() const;

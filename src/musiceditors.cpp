@@ -35,6 +35,7 @@
 #include <QTimer>
 #include <QTreeWidget>
 #include <QCollator>
+#include <QRegularExpressionValidator>
 #include <QDropEvent>
 #include <QMimeData>
 #include <QUrlQuery>
@@ -213,6 +214,17 @@ private:
         }
     }
 };
+
+// "Edit Metadata", or "Edit Metadata — 3 albums" for songs from several.
+QString editorTitle(const QStringList &tracks)
+{
+    QSet<QString> keys;
+    for (const QString &p : tracks) {
+        const MusicIndex::Track *t = musicIndex().track(p);
+        keys.insert(t ? t->album + '\n' + t->displayAlbumArtist() : p);
+    }
+    return keys.size() > 1 ? QObject::tr("Edit Metadata — %1 albums").arg(keys.size()) : QObject::tr("Edit Metadata");
+}
 
 // The note under editors that write into files.
 QWidget *overwriteNote(const QString &text)
@@ -510,14 +522,23 @@ void ArtistPictureOverlay::use(const QString &urlOrFile)
 // AlbumEditorOverlay
 
 AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *window)
-    : PanelOverlay(tr("Edit Metadata"), {1180, 800}, window), m_tracks(tracks)
+    : PanelOverlay(editorTitle(tracks), {1180, 800}, window), m_tracks(tracks)
 {
-    // Album fields, filled from the first song's tags.
+    // Album fields: what the songs share. Where they differ (songs from
+    // several albums), the field starts empty and is left alone on saving
+    // unless something is typed into it.
     const MusicIndex::Track *first = tracks.isEmpty() ? nullptr : musicIndex().track(tracks.first());
-    int year = 0;
-    for (const QString &p : tracks)
-        if (const auto *t = musicIndex().track(p); t && t->year && (!year || t->year < year))
-            year = t->year;
+    QStringList albums, albumArtists, genres, years, albumKeys;
+    for (const QString &p : tracks) {
+        const MusicIndex::Track *t = musicIndex().track(p);
+        albums << (t ? t->album : QString());
+        albumArtists << (t ? t->albumArtist : QString());
+        genres << (t ? t->genre : QString());
+        years << (t && t->year ? QString::number(t->year) : QString());
+        albumKeys << (t ? t->album + '\n' + t->displayAlbumArtist() : p);
+    }
+    albumKeys.removeDuplicates();
+    m_oneAlbum = albumKeys.size() <= 1;
     auto *grid = new QGridLayout;
     grid->setHorizontalSpacing(14);
     grid->setVerticalSpacing(6);
@@ -525,16 +546,23 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     m_albumArtist = field();
     m_year = field();
     m_year->setMaximumWidth(110);
-    m_year->setInputMask("9999");
+    m_year->setValidator(new QRegularExpressionValidator(QRegularExpression("\\d{0,4}"), m_year));
     m_genre = field();
-    if (first) {
-        m_album->setText(first->album);
-        m_albumArtist->setText(first->albumArtist);
+    auto fillIn = [this](QLineEdit *f, QStringList values) {
+        values.removeDuplicates();
+        if (values.size() > 1) {
+            f->setPlaceholderText(tr("Several — kept as they are"));
+            m_mixed << f;
+        } else {
+            f->setText(values.value(0));
+        }
+    };
+    fillIn(m_album, albums);
+    fillIn(m_albumArtist, albumArtists);
+    fillIn(m_genre, genres);
+    fillIn(m_year, years);
+    if (first && !m_mixed.contains(m_albumArtist) && m_albumArtist->text().isEmpty())
         m_albumArtist->setPlaceholderText(first->artist);
-        m_genre->setText(first->genre);
-    }
-    if (year)
-        m_year->setText(QString::number(year));
     grid->addWidget(caption(tr("Album")), 0, 0);
     grid->addWidget(caption(tr("Album artist")), 0, 1);
     grid->addWidget(caption(tr("Year")), 0, 2);
@@ -554,7 +582,8 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     // Songs: number, title, artist (double-click to edit), file.
     auto *left = new QVBoxLayout;
     auto *songsBar = new QHBoxLayout;
-    songsBar->addWidget(caption(tr("Songs — double-click a name to edit it; drag a row to move its file")), 1);
+    songsBar->addWidget(caption(m_oneAlbum ? tr("Songs — double-click a name to edit it; drag a row to move its file")
+                                           : tr("Songs — double-click a name to edit it")), 1);
     auto *byName = button(tr("Order Files by Name"));
     byName->setToolTip(tr("Put the files in the order of their names (01, 02, …), for files named right but tagged wrong"));
     songsBar->addWidget(byName);
@@ -562,6 +591,11 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     auto *table = new TrackTable;
     m_table = table;
     connect(byName, &QPushButton::clicked, this, [table] { table->orderFilesByName(); });
+    if (!m_oneAlbum) { // moving files about only makes sense within one album
+        byName->hide();
+        table->setDragEnabled(false);
+        table->setAcceptDrops(false);
+    }
     m_table->setRootIsDecorated(false);
     m_table->setColumnCount(4);
     m_table->setHeaderLabels({tr("#"), tr("Title"), tr("Artist"), tr("File")});
@@ -592,8 +626,11 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     left->addWidget(m_table, 1);
     split->addLayout(left, 4);
 
-    // MusicBrainz: search, pick a release, and the fields fill in.
-    auto *right = new QVBoxLayout;
+    // MusicBrainz: search, pick a release, and the fields fill in (one album
+    // at a time, so not for songs from several).
+    auto *rightBox = new QWidget;
+    auto *right = new QVBoxLayout(rightBox);
+    right->setContentsMargins(0, 0, 0, 0);
     right->addWidget(caption(tr("Fill in from MusicBrainz")));
     auto *bar = new QHBoxLayout;
     m_query = field(tr("Album and artist"));
@@ -610,7 +647,16 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     m_embedCover = new QCheckBox(tr("Embed its cover in the files too"));
     m_embedCover->setEnabled(false);
     right->addWidget(m_embedCover);
-    split->addLayout(right, 2);
+    split->addWidget(rightBox, 2);
+    if (!m_oneAlbum) {
+        rightBox->hide();
+        auto *note = Dialog::caption(tr("These songs are from %1 albums. Filling in from MusicBrainz works on one "
+                                        "album at a time: open Edit Metadata on a single album for that.")
+                                         .arg(albumKeys.size()));
+        note->setAlignment(Qt::AlignTop);
+        note->setMaximumWidth(300);
+        split->addWidget(note, 0);
+    }
     body()->addLayout(split, 1);
     body()->addWidget(overwriteNote(tr("Saving writes these tags into the files themselves, replacing the tags they "
                                        "have now (and their cover, if you embed one). This can't be undone.")));
@@ -632,7 +678,7 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
             [this](QListWidgetItem *item) { loadRelease(item->data(Qt::UserRole).toString()); });
     connect(cancel, &QPushButton::clicked, this, &AlbumEditorOverlay::close);
     connect(m_save, &QPushButton::clicked, this, &AlbumEditorOverlay::save);
-    if (!m_query->text().isEmpty())
+    if (m_oneAlbum && !m_query->text().isEmpty())
         QTimer::singleShot(0, this, &AlbumEditorOverlay::searchMusicBrainz);
 }
 
@@ -802,10 +848,15 @@ void AlbumEditorOverlay::save()
         put("TITLE", item->text(1));
         put("ARTIST", item->text(2));
         put("TRACKNUMBER", item->text(0));
-        put("ALBUM", m_album->text());
-        put("ALBUMARTIST", m_albumArtist->text());
-        put("DATE", m_year->text());
-        put("GENRE", m_genre->text());
+        // A field the songs differ on stays as each song has it, unless filled in.
+        auto putShared = [&](const char *key, QLineEdit *f) {
+            if (!m_mixed.contains(f) || !f->text().trimmed().isEmpty())
+                put(key, f->text());
+        };
+        putShared("ALBUM", m_album);
+        putShared("ALBUMARTIST", m_albumArtist);
+        putShared("DATE", m_year);
+        putShared("GENRE", m_genre);
         if (!m_releaseId.isEmpty())
             put("MUSICBRAINZ_ALBUMID", m_releaseId);
         file.setProperties(props);

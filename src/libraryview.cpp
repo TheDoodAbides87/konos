@@ -2356,6 +2356,75 @@ int LibraryView::gridColumns() const
     return qMax(1, avail / qMax(1, m_delegate->tileSize.width()));
 }
 
+bool LibraryView::addEditMenu(QMenu &menu, const QModelIndexList &tiles)
+{
+    // The albums involved, each with the songs of it that are meant: an album
+    // tile's songs; an artist's own songs on each of their albums. The same
+    // album through several artists (A, A feat. B, …) counts once.
+    const bool artists = m_loc.section == Section::Music && m_loc.music == "artists" && m_loc.group.isEmpty();
+    struct Album {
+        QString name;
+        QStringList songs;
+    };
+    QList<Album> albums;
+    QHash<QString, int> byKey;
+    auto add = [&](const QString &key, const QString &name, int year, const QStringList &songs) {
+        if (songs.isEmpty())
+            return;
+        if (!byKey.contains(key)) {
+            byKey.insert(key, int(albums.size()));
+            albums.append({year ? QString("%1 (%2)").arg(name).arg(year) : name, {}});
+        }
+        QStringList &all = albums[byKey.value(key)].songs;
+        for (const QString &s : songs)
+            if (!all.contains(s))
+                all << s;
+    };
+    for (const QModelIndex &i : tiles) {
+        const QString path = i.data(PathRole).toString();
+        if (isAlbumTile(i)) {
+            add(path.mid(2), i.data(Qt::DisplayRole).toString(), i.data(YearRole).toInt(), tracksFor(path));
+        } else if (artists && EntryKind(i.data(KindRole).toInt()) == EntryKind::Group) {
+            const MusicIndex::Within whose = within(musicField(m_loc.music), path.mid(2));
+            for (const MusicIndex::Group &g : musicIndex().groups(MusicIndex::Album, whose)) {
+                QStringList songs;
+                for (const MusicIndex::Track &t : musicIndex().tracksIn(MusicIndex::Album, g.key, whose))
+                    songs << t.path;
+                add(g.key, g.name, g.year, songs);
+            }
+        } else {
+            return false; // something else is selected too
+        }
+    }
+    if (albums.isEmpty())
+        return false;
+
+    // Both editors write into the files, and say so before they do.
+    const QColor accent = theme().accent();
+    QMenu *edit = menu.addMenu(theme().icon("edit", accent), tr("Edit"));
+    QStringList everything;
+    for (const Album &a : albums)
+        everything << a.songs;
+    auto metadata = [this](const QStringList &songs) { (new AlbumEditorOverlay(songs, window()))->open(); };
+    auto art = [this](const QStringList &songs) { (new AlbumArtOverlay(songs, window()))->open(); };
+    if (albums.size() == 1) {
+        edit->addAction(theme().icon("tune", accent), tr("Edit Metadata…"), this, [metadata, everything] { metadata(everything); });
+        edit->addAction(theme().icon("save-down", accent), tr("Download Album Art…"), this, [art, everything] { art(everything); });
+        return true;
+    }
+    // Several albums: all at once (the fields they share), or one of them.
+    QMenu *meta = edit->addMenu(theme().icon("tune", accent), tr("Edit Metadata"));
+    meta->addAction(tr("All %1 Albums…").arg(albums.size()), this, [metadata, everything] { metadata(everything); });
+    meta->addSeparator();
+    QMenu *cover = edit->addMenu(theme().icon("save-down", accent), tr("Download Album Art"));
+    for (const Album &a : albums) {
+        const QString label = QFontMetrics(meta->font()).elidedText(a.name, Qt::ElideRight, 320) + "…";
+        meta->addAction(label, this, [metadata, songs = a.songs] { metadata(songs); });
+        cover->addAction(label, this, [art, songs = a.songs] { art(songs); });
+    }
+    return true;
+}
+
 bool LibraryView::isAlbumTile(const QModelIndex &index) const
 {
     if (EntryKind(index.data(KindRole).toInt()) != EntryKind::Group)
@@ -2727,6 +2796,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
                                for (int o : orders)
                                    library().removeFromPlaylist(pl, o);
                            });
+        addEditMenu(menu, sel); // albums or artists: edit them all at once
         menu.exec(menuAt);
         return;
     }
@@ -2751,18 +2821,9 @@ void LibraryView::showContextMenu(const QPoint &pos)
                        [this, items] { emit playNextRequested(items); });
         menu.addAction(theme().icon("play-later", accent), tr("Play Later"), this,
                        [this, items] { emit enqueueRequested(items); });
-        if (album || (artist && artistImages() && !path.mid(2).isEmpty()))
+        if (album || artist)
             menu.addSeparator();
-        if (album) {
-            // Both write into the files, and say so before they do.
-            QMenu *edit = menu.addMenu(theme().icon("edit", accent), tr("Edit"));
-            edit->addAction(theme().icon("tune", accent), tr("Edit Metadata…"), this, [this, items] {
-                (new AlbumEditorOverlay(items, window()))->open();
-            });
-            edit->addAction(theme().icon("save-down", accent), tr("Download Album Art…"), this, [this, items] {
-                (new AlbumArtOverlay(items, window()))->open();
-            });
-        }
+        addEditMenu(menu, {index});
         if (artist && artistImages() && !path.mid(2).isEmpty())
             menu.addAction(theme().icon("artist", accent), tr("Choose Artist Image…"), this, [this, name = path.mid(2)] {
                 (new ArtistPictureOverlay(name, window()))->open();

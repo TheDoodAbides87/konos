@@ -88,6 +88,8 @@ private:
     QLineEdit *m_query;
     QListWidget *m_releases;
     QCheckBox *m_embedCover;
+    QList<QLineEdit *> m_mixed; // album fields the songs differ on
+    bool m_oneAlbum = true;
     QLabel *m_status;
     QPushButton *m_save;
     QString m_releaseId;
