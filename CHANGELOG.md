@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.8 (beta) — 2026-11-08
+
+### Changed
+- **A new icon**: a play button inside a K-shaped ring, in blue and violet.
+  It's the app icon in the launcher, taskbar and window (the Arch package
+  installs it at every size from 16 to 512 pixels), and the AppImage's. In
+  the app, the title bar, the empty player, About and the welcome screen
+  show the mark in its own colours.
+
 ## 0.7.7 (beta) — 2026-11-08
 
 ### Fixed

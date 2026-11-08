@@ -27,7 +27,7 @@ mark without its tile that the app draws in its own window.
 
 Licensed under the [MIT licence](LICENSE).
 
-**Version 0.7.7 (beta).** See [CHANGELOG.md](CHANGELOG.md).
+**Version 0.7.8 (beta).** See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's implemented
 
