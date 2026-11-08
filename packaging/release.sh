@@ -82,6 +82,9 @@ VMP is an overhaul of VLC: VLC's engine (libVLC, by VideoLAN) with a new
 interface. The design is by [Juxtopposed](https://www.youtube.com/@juxtopposed),
 from [*I Redesigned VLC After 25 Years*](https://youtu.be/ERFeOgqk324).
 VMP is independent and not affiliated with VideoLAN or Juxtopposed.
+
+VMP is in early development: it changes often and things may break between
+releases.
 CREDITS
 
 echo

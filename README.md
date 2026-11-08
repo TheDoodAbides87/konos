@@ -4,6 +4,10 @@
 
 A desktop media player for videos, music, discs and streams.
 
+> **Early development.** VMP is a beta that changes often: features move,
+> settings may reset, and things can break between releases. Keep that in mind
+> before relying on it.
+
 **VMP is an overhaul of VLC.** It is VLC media player with a new interface:
 playback, codecs, subtitles, discs, streaming and all audio/video effects come
 from **libVLC 3**, the engine inside VLC, made by the
