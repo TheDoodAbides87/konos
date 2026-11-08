@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.3 (beta) — 2026-11-08
+
+### Changed
+- **The play queue is laid out for music.** When music is playing, the queue
+  shows Recently Played, Now Playing and Playing Next, with each song's
+  cover, title, and artist and album underneath. Playing Next shows where
+  you are ("7 of 9") and, when the rest comes from one album, which one.
+  Click Recently Played to fold it away. With shuffle on, the sections are
+  "Earlier in the Queue" and "Also in the Queue", since shuffle picks at
+  random. Sorting the queue goes back to a plain list. Video queues look as
+  before.
+- **Music is never "Watched".** Songs no longer show Watched or a percentage
+  in lists, the Progress column, tiles, their info or a folder's info, and
+  the right-click menu has no "Mark as watched" for them. Where a song was
+  left off is still remembered.
+
 ## 0.7.2 (beta) — 2026-11-08
 
 ### Fixed

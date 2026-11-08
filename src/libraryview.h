@@ -45,7 +45,25 @@ public:
     QPoint mouse{-1, -1}; // in viewport coordinates, for the buttons' hover look
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 
+    // A play queue of music is laid out like a music app's: Recently Played
+    // (can be folded away), Now Playing and Playing Next, each with a title,
+    // and two-line rows (title; artist – album). Set by the queue tab.
+    struct MusicQueue {
+        bool on = false;
+        int current = -1;       // queue position playing (-1: none)
+        int total = 0;
+        bool recentFolded = false;
+        QString nextAlbum;      // "From …" when everything next is one album
+        QString nextCover;      // a track of that album, for its cover
+    };
+    MusicQueue musicQueue;
+    // The section titles drawn above a queue row (0 if none).
+    int queueHeaderHeight(const QModelIndex &index) const;
+    // Whether pos (viewport) is on the Recently Played title above this row.
+    bool onRecentTitle(const QRect &itemRect, const QModelIndex &index, const QPoint &pos) const;
+
 private:
+    void paintQueueRow(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const;
     void paintDetails(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const;
     QPixmap thumbnail(const QModelIndex &index) const;
 };
@@ -150,6 +168,7 @@ private:
     void playSelection(bool replace);                       // replace the queue with, or add, the selection
     bool artistImages() const;
     void updateQueueCount(); // "3 items · 48m"
+    bool isMusicQueue() const;
     bool queueDragEvent(QEvent *event);
 
     Mode m_mode;

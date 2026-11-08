@@ -139,6 +139,7 @@ class EntryProxy : public QSortFilterProxyModel {
 public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
     int key = 0;
+    int hideBefore = -1; // rows ordered before this are hidden
 
 protected:
     bool lessThan(const QModelIndex &a, const QModelIndex &b) const override
@@ -251,6 +252,8 @@ protected:
     bool filterAcceptsRow(int row, const QModelIndex &parent) const override
     {
         const QModelIndex idx = sourceModel()->index(row, 0, parent);
+        if (idx.data(OrderRole).toInt() < hideBefore) // the music queue's folded Recently Played
+            return false;
         if (filterRegularExpression().pattern().isEmpty())
             return true;
         if (EntryKind(idx.data(KindRole).toInt()) == EntryKind::Action)
@@ -336,9 +339,203 @@ EntryDelegate::TileButton EntryDelegate::tileButtonAt(const QRect &itemRect, con
     return NoButton;
 }
 
-QSize EntryDelegate::sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const
+// The music queue's sizes: a two-line row, and the titles above sections.
+namespace {
+constexpr int kQueueRow = 58, kRecentTitle = 46, kNowTitle = 40, kNextTitle = 46, kNextFrom = 20, kSectionGap = 18;
+
+struct QueueTitles {
+    bool recent = false, now = false, next = false;
+    bool gap = false; // a divider above, after an earlier section
+};
+
+QueueTitles queueTitles(const EntryDelegate::MusicQueue &q, const QModelIndex &index)
 {
+    QueueTitles t;
+    if (!q.on)
+        return t;
+    const int order = index.data(OrderRole).toInt();
+    t.recent = q.current > 0 && (q.recentFolded ? order == q.current : order == 0);
+    t.now = order == q.current;
+    t.next = order == q.current + 1;
+    t.gap = (t.now || t.next) && (index.row() > 0 || t.recent);
+    return t;
+}
+
+QString trackCount(int n)
+{
+    return n == 1 ? QObject::tr("1 track") : QObject::tr("%1 tracks").arg(n);
+}
+} // namespace
+
+int EntryDelegate::queueHeaderHeight(const QModelIndex &index) const
+{
+    const QueueTitles t = queueTitles(musicQueue, index);
+    return (t.recent ? kRecentTitle : 0) + (t.gap ? kSectionGap : 0) + (t.now ? kNowTitle : 0) +
+           (t.next ? kNextTitle + (musicQueue.nextAlbum.isEmpty() ? 0 : kNextFrom) : 0);
+}
+
+bool EntryDelegate::onRecentTitle(const QRect &itemRect, const QModelIndex &index, const QPoint &pos) const
+{
+    if (!queueTitles(musicQueue, index).recent)
+        return false;
+    return QRect(itemRect.left(), itemRect.top(), itemRect.width(), kRecentTitle).contains(pos);
+}
+
+QSize EntryDelegate::sizeHint(const QStyleOptionViewItem &, const QModelIndex &index) const
+{
+    if (!grid && musicQueue.on)
+        return QSize(200, kQueueRow + queueHeaderHeight(index));
     return grid ? tileSize : QSize(200, 44);
+}
+
+void EntryDelegate::paintQueueRow(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+    const Palette &c = theme().pal();
+    const MusicQueue &q = musicQueue;
+    const QueueTitles t = queueTitles(q, index);
+    const int order = index.data(OrderRole).toInt();
+    const bool shuffle = prefs().flag("playback/shuffle");
+    const qreal dpr = p->device()->devicePixelRatioF();
+    p->save();
+    p->setRenderHint(QPainter::Antialiasing);
+    p->setRenderHint(QPainter::SmoothPixmapTransform);
+
+    QFont titleFont = option.font;
+    titleFont.setPixelSize(17);
+    titleFont.setWeight(QFont::DemiBold);
+    QFont small = option.font;
+    small.setPixelSize(13);
+    const QRect full = option.rect;
+    int y = full.top();
+
+    if (t.recent) {
+        const QRect band(full.left() + 4, y, full.width() - 8, kRecentTitle);
+        p->setFont(titleFont);
+        p->setPen(c.textDim);
+        p->drawText(band, Qt::AlignVCenter | Qt::AlignLeft, shuffle ? QObject::tr("Earlier in the Queue")
+                                                                     : QObject::tr("Recently Played"));
+        const QRect chevron(band.right() - 18, band.center().y() - 8, 16, 16);
+        p->drawPixmap(chevron.topLeft(), theme().pixmap(q.recentFolded ? "chevron-down" : "chevron-up", c.textMuted, 16, dpr));
+        p->setFont(small);
+        p->setPen(c.textMuted);
+        p->drawText(band.adjusted(0, 0, -28, 0), Qt::AlignVCenter | Qt::AlignRight, trackCount(q.current));
+        y += kRecentTitle;
+    }
+    if (t.gap) {
+        p->setPen(QPen(c.border, 1));
+        p->drawLine(QPointF(full.left() + 4, y + kSectionGap / 2 + 0.5), QPointF(full.right() - 4, y + kSectionGap / 2 + 0.5));
+        y += kSectionGap;
+    }
+    if (t.now) {
+        p->setFont(titleFont);
+        p->setPen(c.text);
+        p->drawText(QRect(full.left() + 4, y, full.width() - 8, kNowTitle), Qt::AlignVCenter | Qt::AlignLeft,
+                    QObject::tr("Now Playing"));
+        y += kNowTitle;
+    }
+    if (t.next) {
+        const int h = kNextTitle + (q.nextAlbum.isEmpty() ? 0 : kNextFrom);
+        QRect band(full.left() + 4, y, full.width() - 8, h);
+        // The album's cover on the right, when everything next comes from it.
+        if (!q.nextCover.isEmpty() && !q.nextAlbum.isEmpty()) {
+            const QPixmap cover = Thumbnailer::instance().get(q.nextCover);
+            if (!cover.isNull()) {
+                const QRectF tile(band.right() - 40, band.center().y() - 20, 40, 40);
+                QPainterPath clip;
+                clip.addRoundedRect(tile, 4, 4);
+                p->save();
+                p->setClipPath(clip);
+                p->drawPixmap(tile.topLeft(), Thumbnailer::scaled(cover, tile.size().toSize(), dpr, Qt::KeepAspectRatioByExpanding));
+                p->restore();
+                band.setRight(band.right() - 52);
+            }
+        }
+        QString right;
+        if (!shuffle && q.current + 2 <= q.total)
+            right = QObject::tr("%1 of %2").arg(q.current + 2).arg(q.total);
+        p->setFont(small);
+        p->setPen(c.textMuted);
+        const int rw = right.isEmpty() ? 0 : QFontMetrics(small).horizontalAdvance(right) + 12;
+        const QRect top(band.left(), band.top() + (q.nextAlbum.isEmpty() ? 0 : 4), band.width(), kNextTitle - (q.nextAlbum.isEmpty() ? 0 : 4));
+        if (!right.isEmpty())
+            p->drawText(top, Qt::AlignVCenter | Qt::AlignRight, right);
+        p->setFont(titleFont);
+        p->setPen(c.text);
+        p->drawText(top.adjusted(0, 0, -rw, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                    QFontMetrics(titleFont).elidedText(shuffle ? QObject::tr("Also in the Queue") : QObject::tr("Playing Next"),
+                                                       Qt::ElideRight, top.width() - rw));
+        if (!q.nextAlbum.isEmpty()) {
+            QFont from = option.font;
+            from.setPixelSize(14);
+            p->setFont(from);
+            p->setPen(c.textMuted);
+            const QRect line(band.left(), top.bottom() - 10, band.width(), kNextFrom + 6);
+            p->drawText(line, Qt::AlignVCenter | Qt::AlignLeft,
+                        QFontMetrics(from).elidedText(QObject::tr("From %1").arg(q.nextAlbum), Qt::ElideRight, line.width()));
+        }
+        y += h;
+    }
+
+    // The track itself.
+    const QRectF r(full.left(), y + 2, full.width(), kQueueRow - 4);
+    const bool current = order == q.current;
+    const bool earlier = q.current >= 0 && order < q.current;
+    const bool later = order > q.current;
+    const bool hover = option.state & QStyle::State_MouseOver;
+    const bool selected = option.state & QStyle::State_Selected;
+    if (current || hover || selected) {
+        p->setPen(Qt::NoPen);
+        p->setBrush(selected ? c.selected : c.hover);
+        p->drawRoundedRect(r, 8, 8);
+    }
+    double x = r.left() + 8;
+    if (later && !shuffle) { // its place in the queue
+        QFont nf = small;
+        nf.setFeature(QFont::Tag("tnum"), 1);
+        p->setFont(nf);
+        p->setPen(c.textMuted);
+        p->drawText(QRectF(x - 4, r.top(), 26, r.height()), Qt::AlignVCenter | Qt::AlignRight, QString::number(order + 1));
+        x += 30;
+    }
+    const QRectF tile(x, r.center().y() - 20, 40, 40);
+    const QPixmap cover = EntryKind(index.data(KindRole).toInt()) == EntryKind::Audio ? thumbnail(index) : QPixmap();
+    if (!cover.isNull()) {
+        QPainterPath clip;
+        clip.addRoundedRect(tile, 4, 4);
+        p->save();
+        p->setClipPath(clip);
+        p->drawPixmap(tile.topLeft(), Thumbnailer::scaled(cover, tile.size().toSize(), dpr, Qt::KeepAspectRatioByExpanding));
+        p->restore();
+    } else {
+        QColor bg = theme().accent();
+        bg.setAlpha(theme().isDark() ? 46 : 36);
+        p->setPen(Qt::NoPen);
+        p->setBrush(bg);
+        p->drawRoundedRect(tile, 4, 4);
+        const QString icon = EntryKind(index.data(KindRole).toInt()) == EntryKind::Audio ? QString("song")
+                                                                                           : iconForKind(EntryKind(index.data(KindRole).toInt()));
+        p->drawPixmap(QPointF(tile.center().x() - 10, tile.center().y() - 10), theme().pixmap(icon, theme().accent(), 20, dpr));
+    }
+    const QRectF text(tile.right() + 14, r.top(), r.right() - tile.right() - 26, r.height());
+    QStringList by;
+    for (int role : {int(ArtistRole), int(AlbumRole)})
+        if (!index.data(role).toString().isEmpty())
+            by << index.data(role).toString();
+    const QString sub = by.join(QString(" – "));
+    QFont f = option.font;
+    f.setPixelSize(14);
+    p->setFont(f);
+    p->setPen(earlier ? c.textDim : c.text);
+    const QRectF titleRect = sub.isEmpty() ? text : QRectF(text.left(), text.center().y() - 20, text.width(), 20);
+    p->drawText(titleRect, Qt::AlignLeft | (sub.isEmpty() ? Qt::AlignVCenter : Qt::AlignBottom),
+                QFontMetrics(f).elidedText(index.data(Qt::DisplayRole).toString(), Qt::ElideRight, int(text.width())));
+    if (!sub.isEmpty()) {
+        p->setFont(small);
+        p->setPen(c.textMuted);
+        p->drawText(QRectF(text.left(), text.center().y() + 2, text.width(), 18), Qt::AlignLeft | Qt::AlignTop,
+                    QFontMetrics(small).elidedText(sub, Qt::ElideRight, int(text.width())));
+    }
+    p->restore();
 }
 
 static bool isWebImage(const QString &s)
@@ -417,7 +614,12 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
     const bool hover = option.state & QStyle::State_MouseOver;
     const bool selected = option.state & QStyle::State_Selected;
     const bool current = index.data(Qt::UserRole + 50).toBool();
-    const double progress = (kind == EntryKind::Video || kind == EntryKind::Audio) ? library().progress(path) : 0.0;
+    if (!grid && musicQueue.on) {
+        paintQueueRow(p, option, index);
+        return;
+    }
+    // Only videos are "watched"; music just plays.
+    const double progress = kind == EntryKind::Video ? library().progress(path) : 0.0;
     const bool watched = progress >= 0.95;
 
     p->save();
@@ -475,7 +677,7 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
         if (!cols.isEmpty())
             textRect.setRight(cols.first().second.right());
         QString right = cols.isEmpty() ? index.data(DetailRole).toString() : QString();
-        if (cols.isEmpty() && right.isEmpty() && (kind == EntryKind::Video || kind == EntryKind::Audio)) {
+        if (cols.isEmpty() && right.isEmpty() && kind == EntryKind::Video) {
             if (progress > 0.01 && !watched)
                 right = QString("%1%").arg(int(progress * 100));
             else if (watched)
@@ -644,7 +846,7 @@ void EntryDelegate::paintDetails(QPainter *p, const QStyleOptionViewItem &option
                 text = QLocale().toString(index.data(DateRole).toDateTime(), QLocale::ShortFormat);
             break;
         case Column::Progress: {
-            if (!media)
+            if (kind != EntryKind::Video)
                 break;
             const double pr = library().progress(path);
             if (pr >= 0.95) {
@@ -886,9 +1088,13 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
                 m_shuffleBtn->setToolTip(prefs().flag("playback/shuffle") ? tr("Shuffle: on") : tr("Shuffle: off"));
             };
             syncOrder();
-            connect(&prefs(), &Prefs::changed, this, [syncOrder](const QString &key) {
+            connect(&prefs(), &Prefs::changed, this, [this, syncOrder](const QString &key) {
                 if (key == "playback/repeat" || key == "playback/shuffle")
                     syncOrder();
+                if (key == "playback/shuffle" && m_delegate->musicQueue.on)
+                    m_view->viewport()->update(); // the section titles say what shuffle does
+                if (key == "ui/queueRecentFolded" && m_delegate->musicQueue.on)
+                    reload();
             });
             connect(m_repeatBtn, &IconButton::clicked, this, [] {
                 static const int next[] = {2, 0, 1}; // off → all → one → off
@@ -1160,6 +1366,20 @@ void LibraryView::refresh()
     reload();
 }
 
+// The queue tab shows music its own way, when music is what's playing (or,
+// before anything plays, all that's queued) and the queue is in its own order.
+bool LibraryView::isMusicQueue() const
+{
+    if (m_mode != QueueTab || m_loc.section != Section::Queue || m_queue.isEmpty() || m_sortKey != SortDefault || m_sortDesc)
+        return false;
+    if (m_queueCurrent >= 0 && m_queueCurrent < m_queue.size())
+        return Library::kindFor(m_queue.at(m_queueCurrent)) == EntryKind::Audio;
+    for (const QString &loc : m_queue)
+        if (Library::kindFor(loc) != EntryKind::Audio)
+            return false;
+    return true;
+}
+
 void LibraryView::setQueue(const QStringList &items, int current)
 {
     m_queue = items;
@@ -1242,6 +1462,23 @@ QStandardItem *LibraryView::addEntry(const LibraryEntry &e, int order)
 void LibraryView::reload()
 {
     m_model->clear();
+    {
+        EntryDelegate::MusicQueue mq;
+        mq.on = isMusicQueue();
+        if (mq.on) {
+            mq.current = m_queueCurrent;
+            mq.total = int(m_queue.size());
+            mq.recentFolded = prefs().flag("ui/queueRecentFolded");
+        }
+        m_delegate->musicQueue = mq;
+        auto *proxy = static_cast<EntryProxy *>(m_proxy);
+        const int hide = mq.on && mq.recentFolded ? mq.current : -1;
+        if (proxy->hideBefore != hide) {
+            proxy->hideBefore = hide;
+            proxy->invalidate();
+        }
+        m_view->setUniformItemSizes(!mq.on);
+    }
     const bool home = m_home && m_loc.section == Section::Home;
     // The Music menu is a fixed list: no sorting or grid.
     const bool menu = m_loc.section == Section::Music && m_loc.music.isEmpty();
@@ -1353,11 +1590,37 @@ void LibraryView::reload()
             addEntry(entryFor(loc), order++);
         empty = tr("Media you play will show up here.");
         break;
-    case Section::Queue:
-        for (const QString &loc : m_queue)
-            addEntry(entryFor(loc), order++);
+    case Section::Queue: {
+        // Music gets its own layout (EntryDelegate::MusicQueue): titles
+        // with the artist and album under them, and no "Watched".
+        EntryDelegate::MusicQueue &mq = m_delegate->musicQueue;
+        QStringList nextAlbums;
+        QString nextCover;
+        for (const QString &loc : m_queue) {
+            LibraryEntry e = entryFor(loc);
+            const MusicIndex::Track *t = mq.on && e.kind == EntryKind::Audio ? musicIndex().track(loc) : nullptr;
+            if (t)
+                e.name = t->displayTitle();
+            QStandardItem *item = addEntry(e, order);
+            if (t) {
+                item->setData(t->displayArtist(), ArtistRole);
+                item->setData(t->album, AlbumRole);
+            }
+            if (order > m_queueCurrent) {
+                nextAlbums << (t ? t->album + '\n' + t->displayAlbumArtist() : QString());
+                if (nextCover.isEmpty() && t)
+                    nextCover = loc;
+            }
+            ++order;
+        }
+        nextAlbums.removeDuplicates();
+        if (mq.on && nextAlbums.size() == 1 && !nextAlbums.first().section('\n', 0, 0).isEmpty()) {
+            mq.nextAlbum = nextAlbums.first().section('\n', 0, 0);
+            mq.nextCover = nextCover;
+        }
         empty = tr("The play queue is empty.");
         break;
+    }
     }
 
     m_proxy->sort(0, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
@@ -1762,7 +2025,8 @@ bool LibraryView::queueDragEvent(QEvent *event)
         int row = m_proxy->rowCount();
         int y = 0;
         if (idx.isValid()) {
-            const QRect r = m_view->visualRect(idx);
+            QRect r = m_view->visualRect(idx);
+            r.setTop(r.top() + m_delegate->queueHeaderHeight(idx)); // past any section titles
             const bool below = pos.y() > r.center().y();
             row = idx.row() + (below ? 1 : 0);
             y = below ? r.bottom() + 1 : r.top();
@@ -1886,6 +2150,21 @@ bool LibraryView::eventFilter(QObject *obj, QEvent *event)
         (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove ||
          event->type() == QEvent::DragLeave || event->type() == QEvent::Drop))
         return queueDragEvent(event);
+    if (obj == m_view->viewport() && m_delegate->musicQueue.on &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick ||
+         event->type() == QEvent::MouseButtonRelease)) {
+        // The section titles above queue rows aren't part of the rows: a
+        // click on Recently Played folds it, the others do nothing.
+        const QPoint pos = static_cast<QMouseEvent *>(event)->position().toPoint();
+        const QModelIndex idx = m_view->indexAt(pos);
+        if (idx.isValid() && pos.y() < m_view->visualRect(idx).top() + m_delegate->queueHeaderHeight(idx)) {
+            if (event->type() == QEvent::MouseButtonPress && static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton &&
+                m_delegate->onRecentTitle(m_view->visualRect(idx), idx, pos)) {
+                prefs().set("ui/queueRecentFolded", !prefs().flag("ui/queueRecentFolded")); // reloads
+            }
+            return true;
+        }
+    }
     if (obj == m_view->viewport() && tileButtonEvent(event))
         return true;
     if (event->type() == QEvent::MouseButtonRelease) {
@@ -1980,6 +2259,8 @@ void LibraryView::setSort(int key, bool desc)
     m_sortDesc = desc;
     saveSort();
     applySort();
+    if (m_mode == QueueTab && isMusicQueue() != m_delegate->musicQueue.on)
+        reload(); // sorted, the queue loses its sections (and gets them back)
 }
 
 void LibraryView::setGridView(bool grid, bool remember)
@@ -2446,7 +2727,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
             library().addStream(path, index.data(Qt::DisplayRole).toString());
         });
 
-    if (kind == EntryKind::Video || kind == EntryKind::Audio) {
+    if (kind == EntryKind::Video) {
         const bool watched = library().progress(path) >= 0.95;
         menu.addAction(theme().icon(watched ? "eye-off" : "eye", accent),
                        watched ? tr("Mark as unwatched") : tr("Mark as watched"), this,

@@ -298,7 +298,7 @@ MediaInfoOverlay::MediaInfoOverlay(const QString &location, QWidget *window)
                 continue;
             Library::isAudioFile(f.filePath()) ? ++audio : ++videos;
             bytes += f.size();
-            watched += library().progress(f.filePath()) >= 0.95;
+            watched += !Library::isAudioFile(f.filePath()) && library().progress(f.filePath()) >= 0.95;
             const qint64 ms = Durations::instance().duration(f.filePath());
             ms < 0 ? void(lengthKnown = false) : void(length += ms);
         }
@@ -316,7 +316,8 @@ MediaInfoOverlay::MediaInfoOverlay(const QString &location, QWidget *window)
             addRow(tr("Size"), loc.formattedDataSize(bytes));
             if (length > 0)
                 addRow(tr("Length"), lengthText(length) + (lengthKnown ? QString() : tr(" (still counting)")));
-            addRow(tr("Watched"), tr("%1 of %2").arg(watched).arg(videos + audio));
+            if (videos > 0) // music isn't "watched"
+                addRow(tr("Watched"), tr("%1 of %2").arg(watched).arg(videos));
         }
         addRow(tr("Modified"), loc.toString(fi.lastModified(), QLocale::LongFormat));
     } else {
@@ -330,7 +331,8 @@ MediaInfoOverlay::MediaInfoOverlay(const QString &location, QWidget *window)
             addRow(tr("Length"), lengthText(ms));
         addRow(tr("Modified"), loc.toString(fi.lastModified(), QLocale::LongFormat));
         const double p = library().progress(location);
-        addRow(tr("Progress"), p >= 0.95 ? tr("Watched") : p > 0.01 ? tr("%1% (resumes at %2)").arg(int(p * 100)).arg(lengthText(library().resumeTime(location)))
+        if (!Library::isAudioFile(location))
+            addRow(tr("Progress"), p >= 0.95 ? tr("Watched") : p > 0.01 ? tr("%1% (resumes at %2)").arg(int(p * 100)).arg(lengthText(library().resumeTime(location)))
                                                        : tr("Not started"));
         if (t) {
             addRow(tr("Title"), t->displayTitle());
