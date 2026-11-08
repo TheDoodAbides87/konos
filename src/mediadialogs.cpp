@@ -33,24 +33,12 @@
 #include <QVBoxLayout>
 #include <vlc/vlc.h>
 
-namespace {
-QPushButton *button(const QString &text, bool accent = false)
-{
-    auto *b = new QPushButton(text);
-    b->setCursor(Qt::PointingHandCursor);
-    b->setFixedHeight(36);
-    if (accent)
-        b->setProperty("role", "accent");
-    return b;
-}
+using Dialog::button;
+using Dialog::caption;
+using FileDialogs::mediaFilter;
 
-QLabel *caption(const QString &text)
-{
-    auto *l = new QLabel(text);
-    l->setProperty("role", "dim");
-    l->setWordWrap(true);
-    return l;
-}
+namespace {
+
 
 Dropdown *dropdown(int width = 330)
 {
@@ -80,11 +68,6 @@ QProgressBar *progressBar()
     return bar;
 }
 
-const char *mediaFilter()
-{
-    return "Media files (*.mp4 *.mkv *.avi *.mov *.webm *.m4v *.wmv *.flv *.mpg *.mpeg *.ts *.m2ts *.3gp *.ogv "
-           "*.vob *.mp3 *.flac *.ogg *.opus *.m4a *.aac *.wav *.wma *.aiff *.ape *.mka);;All files (*)";
-}
 
 // Quoted for a sout chain.
 QString soutQuote(const QString &s)
@@ -494,7 +477,7 @@ void ConvertOverlay::next()
     ++m_at;
     if (m_at >= m_list->count()) {
         finish(m_failed ? tr("Done: %1 converted, %2 failed.").arg(m_done).arg(m_failed)
-                        : tr("Done: %n file(s) converted.", nullptr, m_done));
+                        : (m_done == 1 ? tr("Done: 1 file converted.") : tr("Done: %1 files converted.").arg(m_done)));
         return;
     }
     const Profile p = profiles().value(m_profile->currentIndex());

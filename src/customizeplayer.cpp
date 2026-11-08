@@ -2,6 +2,7 @@
 #include "chrome.h"
 #include "prefs.h"
 #include "theme.h"
+#include "widgets.h"
 
 #include <QDrag>
 #include <QDragEnterEvent>
@@ -424,14 +425,7 @@ CustomizePlayerOverlay::CustomizePlayerOverlay(QWidget *window)
     body()->addWidget(m_strip);
 
     auto *foot = new QHBoxLayout;
-    auto button = [](const QString &text, bool accent = false) {
-        auto *b = new QPushButton(text);
-        b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(36);
-        if (accent)
-            b->setProperty("role", "accent");
-        return b;
-    };
+    using Dialog::button;
     auto *reset = button(tr("Reset to Default"));
     auto *cancel = button(tr("Cancel"));
     auto *save = button(tr("Save"), true);

@@ -29,7 +29,7 @@ static void migrateOldNames()
     const QString newData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (QFile::exists(newConf) || QDir(newData).exists())
         return;
-    for (const QString old : {QStringLiteral("vmp"), QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
+    for (const QString &old : {QStringLiteral("vmp"), QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
         const QString oldConf = config + "/" + old + "/" + old + ".conf";
         const QDir oldData(data + "/" + old + "/" + old);
         if (!QFile::exists(oldConf) && !oldData.exists())

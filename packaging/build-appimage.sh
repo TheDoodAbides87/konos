@@ -46,17 +46,20 @@ cp -a "$VLC_LIBDIR"/libvlc_*.so* "$APPDIR/usr/lib/vlc/" 2>/dev/null || true
 #   gstdecode    GStreamer (needs host GStreamer plugins at matching versions)
 #   control/*    remote-control interfaces (libVLC never starts them), except hotkeys
 #   notify/*     desktop notifications (drags in GTK 3)
-#   visualization, video_splitter   no UI for them here
+#   video_splitter   no UI for it here
+#   visualization/glspectrum, projectm   open their own OpenGL windows (the audio
+#                visualizer uses "visual" and "goom", which stay)
 #   video_output/*   video is drawn by the app through vmem; VLC's own windows aren't used
-#   services_discovery/*   UPnP/SAP/etc. browsing isn't exposed in the UI
-#   fluidsynth (MIDI, drags in SDL 3), Chromecast renderer
+#   services_discovery/*   UPnP/SAP/etc. browsing isn't exposed in the UI, except
+#                microdns, which finds Chromecasts for Stream → Chromecast
+#   fluidsynth (MIDI, drags in SDL 3)
 P="$APPDIR/usr/lib/vlc/plugins"
-rm -rf "$P/gui" "$P/notify" "$P/visualization" "$P/video_splitter" "$P/services_discovery"
+rm -rf "$P/gui" "$P/notify" "$P/video_splitter"
+rm -f "$P/visualization/libglspectrum_plugin.so" "$P/visualization/libprojectm_plugin.so"
+find "$P/services_discovery" -name '*.so' ! -name libmicrodns_plugin.so -delete
 find "$P/control" -name '*.so' ! -name libhotkeys_plugin.so ! -name libdummy_plugin.so -delete
 find "$P/video_output" -name '*.so' ! -name libvmem_plugin.so ! -name libvdummy_plugin.so -delete
-rm -f "$P/codec/libgstdecode_plugin.so" "$P/codec/libfluidsynth_plugin.so" \
-      "$P/stream_out/libstream_out_chromecast_plugin.so" "$P/demux/libdemux_chromecast_plugin.so" \
-      "$P/plugins.dat"
+rm -f "$P/codec/libgstdecode_plugin.so" "$P/codec/libfluidsynth_plugin.so" "$P/plugins.dat"
 
 # Qt's Wayland EGL client integration (needed for the OpenGL video surface on
 # Wayland); linuxdeploy-plugin-qt doesn't pick it up on its own.

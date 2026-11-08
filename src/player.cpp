@@ -1348,6 +1348,15 @@ void Player::applyAll()
         libvlc_video_set_deinterlace(m_mp, m_deinterlace.toUtf8().constData());
 }
 
+libvlc_instance_t *Player::parserInstance()
+{
+    static libvlc_instance_t *vlc = [] {
+        const char *args[] = {"--quiet", "--no-lua", "--no-video", "--no-audio"};
+        return libvlc_new(int(std::size(args)), args);
+    }();
+    return vlc;
+}
+
 QList<QPair<QString, QString>> Player::filterModules(bool audio)
 {
     QList<QPair<QString, QString>> out;

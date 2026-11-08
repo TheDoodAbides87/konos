@@ -196,6 +196,9 @@ public:
     bool previousChapter();
 
     static QList<QPair<QString, QString>> filterModules(bool audio);
+    // A second engine, quiet and with no audio or video output, for reading
+    // files' tags and lengths in the background (shared, made on first use).
+    static libvlc_instance_t *parserInstance();
 
     // Prints libVLC's object tree and active filter chains (developer aid).
     void debugDump() const;

@@ -114,8 +114,10 @@ protected:
     void paintEvent(QPaintEvent *) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
     void hideEvent(QHideEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
 
 private:
+    void fitToWidth(); // hides the least important items when they don't fit
     void updateTime(qint64 ms);
     void updateState();
     void showSeekPreview(double ms, const QPoint &pos);

@@ -30,41 +30,14 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+using Dialog::button;
+using Dialog::caption;
+using Dialog::field;
+using FileDialogs::mediaFilter;
 namespace {
-QPushButton *button(const QString &text, bool accent = false)
-{
-    auto *b = new QPushButton(text);
-    b->setCursor(Qt::PointingHandCursor);
-    b->setFixedHeight(36);
-    if (accent) {
-        b->setProperty("role", "accent");
-        b->style()->unpolish(b);
-        b->style()->polish(b);
-    }
-    return b;
-}
 
-QLineEdit *field(const QString &placeholder = QString())
-{
-    auto *e = new QLineEdit;
-    e->setFixedHeight(36);
-    e->setPlaceholderText(placeholder);
-    return e;
-}
 
-QLabel *caption(const QString &text)
-{
-    auto *l = new QLabel(text);
-    l->setProperty("role", "dim");
-    l->setWordWrap(true);
-    return l;
-}
 
-const char *mediaFilter()
-{
-    return "Media files (*.mp4 *.mkv *.avi *.mov *.webm *.m4v *.wmv *.flv *.mpg *.mpeg *.ts *.m2ts *.3gp *.ogv "
-           "*.vob *.mp3 *.flac *.ogg *.opus *.m4a *.aac *.wav *.wma *.aiff *.ape *.mka);;All files (*)";
-}
 
 QString lengthText(qint64 ms)
 {
@@ -437,7 +410,7 @@ FolderTracksOverlay::FolderTracksOverlay(const QString &folder, bool subtitles, 
     for (int n = 1; n <= 4; ++n)
         m_rule->addItem(ShowPresets::describeRule(QString("track:%1").arg(n)), QString("track:%1").arg(n));
     QList<QPair<QString, QString>> langs;
-    for (const QString &c : {"en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh", "ru", "ar", "hi", "nl", "sv", "pl"})
+    for (const char *c : {"en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh", "ru", "ar", "hi", "nl", "sv", "pl"})
         langs << qMakePair(ShowPresets::describeRule(QString("lang:") + c), QString("lang:") + c);
     std::sort(langs.begin(), langs.end());
     m_rule->insertSeparator(m_rule->count());

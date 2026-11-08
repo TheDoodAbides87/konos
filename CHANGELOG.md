@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.2 (beta) — 2026-11-08
+
+### Fixed
+- **AppImage: Stream → Chromecast works.** The AppImage left out the
+  Chromecast plugins and the one that finds Chromecasts on the network; only
+  the Arch package had them.
+- **AppImage: the audio visualizer works.** Its plugins were left out too.
+- **The playback bar fits narrow windows.** When the items chosen in
+  Customize Player don't fit, the least important ones are hidden (names,
+  thumbnail and dividers first; Play always stays) so the seek bar keeps
+  room.
+- Messages say "1 item" / "2 items" rather than "item(s)".
+
+### Changed
+- Playback positions of files that were deleted are forgotten (a file on a
+  drive that isn't plugged in keeps its position).
+- Reading songs' tags and files' lengths shares one background engine
+  instead of two.
+- Tidier code: shared dialog parts, test-only commands in their own file, no
+  compiler warnings.
+
 ## 0.7.1 (beta) — 2026-11-08
 
 Fixes and speed-ups from an audit of the code.

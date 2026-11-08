@@ -115,6 +115,7 @@ signals:
 private:
     Library();
     void load();
+    void pruneMissing(); // positions of deleted files
     void scheduleSave();
     void save() const;
 

@@ -685,6 +685,58 @@ void ControlBar::rebuild()
     for (const QString &id : savedControls(false))
         place(id);
     updateLabels();
+    fitToWidth();
+}
+
+void ControlBar::resizeEvent(QResizeEvent *e)
+{
+    QWidget::resizeEvent(e);
+    fitToWidth();
+}
+
+void ControlBar::fitToWidth()
+{
+    // Everything chosen first, then off again from the least important end
+    // until the seek bar keeps a usable width. Play always stays.
+    QList<QWidget *> items;
+    for (const QString &id : m_shown)
+        items << m_items.value(id);
+    items << m_transient;
+    for (QWidget *w : items)
+        w->setVisible(true);
+    auto rank = [this](QWidget *w) {
+        const QString id = m_items.key(w);
+        if (id.isEmpty())
+            return 2; // a divider
+        if (const ControlItem *it = controlItem(id); it && it->text)
+            return 0;
+        static const QStringList core = {"settings", "subtitles", "audio", "queue", "next", "prev", "volume"};
+        if (id == "thumbnail")
+            return 1;
+        if (!core.contains(id))
+            return 3;
+        return 4 + int(core.indexOf(id));
+    };
+    QList<QWidget *> order;
+    for (int i = items.size() - 1; i >= 0; --i) // within a rank, the rightmost goes first
+        if (m_items.key(items[i]) != "play")
+            order << items[i];
+    std::stable_sort(order.begin(), order.end(), [&](QWidget *a, QWidget *b) { return rank(a) < rank(b); });
+    const int spacing = m_layout->spacing();
+    auto needed = [&] {
+        int w = m_layout->contentsMargins().left() + m_layout->contentsMargins().right() + 30 + 140; // fixed gaps, seek
+        w += m_time->sizeHint().width() + m_duration->sizeHint().width() + 2 * spacing;
+        for (QWidget *it : items)
+            if (!it->isHidden())
+                w += it->sizeHint().width() + spacing;
+        w += 16 * int(savedControls(true).count("spacer") + savedControls(false).count("spacer"));
+        return w;
+    };
+    for (QWidget *w : order) {
+        if (needed() <= width())
+            break;
+        w->setVisible(false);
+    }
 }
 
 void ControlBar::updateLabels()

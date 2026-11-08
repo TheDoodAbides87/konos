@@ -3,6 +3,7 @@
 #include "prefs.h"
 #include "shortcuts.h"
 #include "theme.h"
+#include "widgets.h"
 
 #include <QDir>
 #include <QFile>
@@ -136,11 +137,9 @@ bool Profiles::remove(const QString &name)
 
 NewProfileOverlay::NewProfileOverlay(QWidget *window) : PanelOverlay(tr("New Profile"), {520, 270}, window)
 {
-    auto *intro = new QLabel(tr("A new profile starts as a copy of the settings in use (“%1”). Change "
+    auto *intro = Dialog::caption(tr("A new profile starts as a copy of the settings in use (“%1”). Change "
                                 "anything after switching to it; the other profiles keep theirs.")
                                  .arg(Profiles::instance().current()));
-    intro->setProperty("role", "dim");
-    intro->setWordWrap(true);
     body()->addWidget(intro);
     auto *name = new QLineEdit;
     name->setPlaceholderText(tr("Name, like “Late Night”"));
@@ -152,14 +151,10 @@ NewProfileOverlay::NewProfileOverlay(QWidget *window) : PanelOverlay(tr("New Pro
     body()->addStretch();
     auto *foot = new QHBoxLayout;
     foot->addStretch();
-    auto *cancel = new QPushButton(tr("Cancel"));
-    auto *create = new QPushButton(tr("Create and Switch"));
-    create->setProperty("role", "accent");
-    for (auto *b : {cancel, create}) {
-        b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(36);
-        foot->addWidget(b);
-    }
+    auto *cancel = Dialog::button(tr("Cancel"));
+    auto *create = Dialog::button(tr("Create and Switch"), true);
+    foot->addWidget(cancel);
+    foot->addWidget(create);
     body()->addLayout(foot);
     connect(cancel, &QPushButton::clicked, this, &PanelOverlay::close);
     auto go = [this, name, status] {

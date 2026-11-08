@@ -274,17 +274,6 @@ private:
 // ---------------------------------------------------------------------------
 // KeyboardShortcutsOverlay
 
-namespace {
-QPushButton *dialogButton(const QString &text, bool accent = false)
-{
-    auto *b = new QPushButton(text);
-    b->setCursor(Qt::PointingHandCursor);
-    b->setFixedHeight(36);
-    if (accent)
-        b->setProperty("role", "accent");
-    return b;
-}
-} // namespace
 
 KeyboardShortcutsOverlay::KeyboardShortcutsOverlay(QWidget *window)
     : PanelOverlay(tr("Keyboard Shortcuts"), {900, 820}, window), m_keys(Shortcuts::instance().all())
@@ -371,9 +360,9 @@ KeyboardShortcutsOverlay::KeyboardShortcutsOverlay(QWidget *window)
     m_status->setProperty("role", "dim");
     m_status->setWordWrap(true);
     foot->addWidget(m_status, 1);
-    auto *reset = dialogButton(tr("Reset to Defaults"));
-    auto *cancel = dialogButton(tr("Cancel"));
-    auto *save = dialogButton(tr("Save"), true);
+    auto *reset = Dialog::button(tr("Reset to Defaults"));
+    auto *cancel = Dialog::button(tr("Cancel"));
+    auto *save = Dialog::button(tr("Save"), true);
     foot->addWidget(reset);
     foot->addWidget(cancel);
     foot->addWidget(save);

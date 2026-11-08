@@ -1,4 +1,5 @@
 #include "datafile.h"
+#include "player.h"
 #include "durations.h"
 #include "library.h"
 #include "musicindex.h"
@@ -67,8 +68,7 @@ void Durations::pump()
 {
     while (m_parsing.size() < 2 && !m_queue.isEmpty()) {
         if (!m_vlc) {
-            const char *args[] = {"--quiet", "--no-lua", "--no-video", "--no-audio"};
-            m_vlc = libvlc_new(int(std::size(args)), args);
+            m_vlc = Player::parserInstance(); // shared with the music index
             if (!m_vlc) {
                 m_queue.clear();
                 return;

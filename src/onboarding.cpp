@@ -55,10 +55,7 @@ QLabel *heading(const QString &text)
 
 QLabel *dim(const QString &text)
 {
-    auto *l = new QLabel(text);
-    l->setProperty("role", "dim");
-    l->setWordWrap(true);
-    return l;
+    return Dialog::caption(text);
 }
 
 // A key cap like the ones in Settings → Controls.

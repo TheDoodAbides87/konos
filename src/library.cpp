@@ -79,6 +79,28 @@ Library::Library()
     m_saveTimer.setInterval(800);
     connect(&m_saveTimer, &QTimer::timeout, this, &Library::save);
     load();
+    // Once Konos is up: forget positions of files that were deleted.
+    QTimer::singleShot(10000, this, &Library::pruneMissing);
+}
+
+void Library::pruneMissing()
+{
+    int removed = 0;
+    for (auto it = m_positions.begin(); it != m_positions.end();) {
+        const QString &loc = it.key();
+        // Only local files whose folder is still there: a file on a drive
+        // that isn't plugged in right now keeps its position.
+        const QFileInfo fi(loc);
+        if (!isUrl(loc) && fi.isAbsolute() && !Disc::isDiscLocation(loc) && QFileInfo(fi.absolutePath()).isDir() &&
+            !fi.exists()) {
+            it = m_positions.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    if (removed)
+        scheduleSave();
 }
 
 static QString dataFile()

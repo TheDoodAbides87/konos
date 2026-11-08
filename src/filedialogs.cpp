@@ -118,6 +118,14 @@ bool run(QFileDialog &d)
 
 namespace FileDialogs {
 
+QString mediaFilter(bool playlists)
+{
+    return QObject::tr("Media files (*.mp4 *.mkv *.avi *.mov *.webm *.m4v *.wmv *.flv *.mpg *.mpeg *.ts *.m2ts "
+                       "*.3gp *.ogv *.vob *.mp3 *.flac *.ogg *.opus *.m4a *.aac *.wav *.wma *.aiff *.ape *.mka%1)"
+                       ";;All files (*)")
+        .arg(playlists ? " *.m3u *.m3u8 *.pls *.xspf" : "");
+}
+
 QStringList openFiles(QWidget *parent, const QString &title, const QString &dir, const QString &filter)
 {
     QFileDialog d(parent, title, dir, filter);

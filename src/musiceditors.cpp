@@ -34,33 +34,15 @@
 #include <taglib/fileref.h>
 #include <taglib/tpropertymap.h>
 
-namespace {
-QPushButton *button(const QString &text, bool accent = false)
-{
-    auto *b = new QPushButton(text);
-    b->setCursor(Qt::PointingHandCursor);
-    b->setFixedHeight(36);
-    if (accent) {
-        b->setProperty("role", "accent");
-        b->style()->unpolish(b);
-        b->style()->polish(b);
-    }
-    return b;
-}
+using Dialog::button;
+using Dialog::field;
 
-QLineEdit *field(const QString &placeholder = QString())
-{
-    auto *e = new QLineEdit;
-    e->setFixedHeight(36);
-    e->setPlaceholderText(placeholder);
-    return e;
-}
+namespace {
+
 
 QLabel *caption(const QString &text)
 {
-    auto *l = new QLabel(text);
-    l->setProperty("role", "dim");
-    return l;
+    return Dialog::caption(text, false);
 }
 
 // "Bathory", "Simon & Garfunkel", "A feat. B" from a MusicBrainz artist-credit.

@@ -27,7 +27,7 @@ shape in the app.
 
 Licensed under the [MIT licence](LICENSE).
 
-**Version 0.7.1 (beta).** See [CHANGELOG.md](CHANGELOG.md).
+**Version 0.7.2 (beta).** See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's implemented
 

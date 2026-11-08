@@ -1,4 +1,5 @@
 #include "widgets.h"
+#include <QStyle>
 #include "theme.h"
 
 #include <QAbstractItemView>
@@ -1110,6 +1111,37 @@ QLabel *sectionHeading(const QString &text, QWidget *parent)
     l->setStyleSheet("font-size: 17px; font-weight: 500; padding-top: 6px;");
     return l;
 }
+
+namespace Dialog {
+QPushButton *button(const QString &text, bool accent)
+{
+    auto *b = new QPushButton(text);
+    b->setCursor(Qt::PointingHandCursor);
+    b->setFixedHeight(36);
+    if (accent) {
+        b->setProperty("role", "accent");
+        b->style()->unpolish(b);
+        b->style()->polish(b);
+    }
+    return b;
+}
+
+QLineEdit *field(const QString &placeholder)
+{
+    auto *e = new QLineEdit;
+    e->setFixedHeight(36);
+    e->setPlaceholderText(placeholder);
+    return e;
+}
+
+QLabel *caption(const QString &text, bool wrap)
+{
+    auto *l = new QLabel(text);
+    l->setProperty("role", "dim");
+    l->setWordWrap(wrap);
+    return l;
+}
+} // namespace Dialog
 
 QWidget *hline(QWidget *parent)
 {

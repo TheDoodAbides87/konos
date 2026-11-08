@@ -30,6 +30,7 @@ SOURCES += \
     src/miniplayer.cpp \
     src/shortcuts.cpp \
     src/datafile.cpp \
+    src/devscript.cpp \
     src/mediadialogs.cpp \
     src/customizeplayer.cpp \
     src/profiles.cpp \

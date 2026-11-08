@@ -10,6 +10,9 @@ class QWidget;
 // static functions; an empty result means cancelled.
 namespace FileDialogs {
 
+// "Media files (*.mp4 …);;All files (*)"; with playlists, .m3u/.pls/.xspf too.
+QString mediaFilter(bool playlists = false);
+
 QStringList openFiles(QWidget *parent, const QString &title, const QString &dir, const QString &filter);
 QString openFile(QWidget *parent, const QString &title, const QString &dir, const QString &filter);
 QString existingDirectory(QWidget *parent, const QString &title, const QString &dir = {});

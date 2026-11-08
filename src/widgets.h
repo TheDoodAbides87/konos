@@ -323,6 +323,15 @@ QWidget *settingRow(const QString &label, QWidget *control, const QString &info 
                     QWidget *parent = nullptr);
 QLabel *sectionHeading(const QString &text, QWidget *parent = nullptr);
 QWidget *hline(QWidget *parent = nullptr);
+
+// The parts every dialog is built from, so they all look alike.
+class QLineEdit;
+class QPushButton;
+namespace Dialog {
+QPushButton *button(const QString &text, bool accent = false); // 36 px high; accent: the main action
+QLineEdit *field(const QString &placeholder = QString());
+QLabel *caption(const QString &text, bool wrap = true); // dim text
+} // namespace Dialog
 QString formatTime(qint64 ms, bool forceHours = false);
 
 // Tab with icon + label and an accent underline when checked.
