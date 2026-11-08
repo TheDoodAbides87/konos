@@ -133,3 +133,19 @@ class AboutOverlay : public PanelOverlay {
 public:
     explicit AboutOverlay(QWidget *window);
 };
+
+// Main menu → Plugins & Extensions → "Plugins": every VLC plugin Konos can
+// use, searchable. Read-only: libVLC has no add-on manager or Lua extensions.
+class PluginsOverlay : public PanelOverlay {
+    Q_OBJECT
+public:
+    explicit PluginsOverlay(QWidget *window);
+
+private:
+    void filter();
+    class QTreeWidget *m_table;
+    QLineEdit *m_search;
+    Dropdown *m_capability;
+    QLabel *m_count;
+};
+

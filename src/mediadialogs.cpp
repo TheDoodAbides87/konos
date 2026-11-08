@@ -5,6 +5,7 @@
 #include "prefs.h"
 #include "theme.h"
 #include "version.h"
+#include "vlcvars.h"
 #include "widgets.h"
 
 #include <QApplication>
@@ -12,6 +13,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHeaderView>
+#include <QTreeWidget>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -798,3 +801,89 @@ AboutOverlay::AboutOverlay(QWidget *window) : PanelOverlay(tr("About Konos"), {5
     body()->addLayout(foot);
     connect(ok, &QPushButton::clicked, this, &PanelOverlay::close);
 }
+
+// ---------------------------------------------------------------------------
+// PluginsOverlay
+
+PluginsOverlay::PluginsOverlay(QWidget *window) : PanelOverlay(tr("Plugins"), {900, 760}, window)
+{
+    auto *intro = caption(tr("The VLC plugins Konos plays and converts with, as installed on this computer. VLC "
+                             "picks the highest-scoring plugin that can handle a job. Konos can't install VLC "
+                             "add-ons, skins or Lua extensions: libVLC doesn't support them."));
+    body()->addWidget(intro);
+    auto *bar = new QHBoxLayout;
+    m_search = new QLineEdit;
+    m_search->setPlaceholderText(tr("Search plugins…"));
+    m_search->setProperty("role", "search");
+    m_search->setFixedHeight(38);
+    m_search->setClearButtonEnabled(true);
+    auto *icon = new QLabel(m_search);
+    icon->setAttribute(Qt::WA_TransparentForMouseEvents);
+    icon->setGeometry(12, 10, 18, 18);
+    icon->setPixmap(theme().pixmap("search", theme().pal().textDim, 18, 2.0));
+    m_capability = dropdown(230);
+    bar->addWidget(m_search, 1);
+    bar->addWidget(m_capability);
+    body()->addLayout(bar);
+
+    m_table = new QTreeWidget;
+    m_table->setColumnCount(3);
+    m_table->setHeaderLabels({tr("Name"), tr("Capability"), tr("Score")});
+    m_table->setRootIsDecorated(false);
+    m_table->setUniformRowHeights(true);
+    m_table->setSortingEnabled(true);
+    m_table->header()->setStretchLastSection(false);
+    m_table->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_table->header()->setSectionResizeMode(1, QHeaderView::Fixed);
+    m_table->header()->setSectionResizeMode(2, QHeaderView::Fixed);
+    m_table->setColumnWidth(1, 220);
+    m_table->setColumnWidth(2, 80);
+    QStringList caps;
+    for (const VlcVars::Module &m : VlcVars::modules()) {
+        auto *item = new QTreeWidgetItem(m_table);
+        item->setText(0, m.longName.isEmpty() ? m.name : m.longName);
+        item->setText(1, m.capability);
+        item->setData(2, Qt::DisplayRole, m.score); // sorts as a number
+        item->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
+        item->setToolTip(0, QString("%1 (%2)").arg(m.longName, m.object));
+        if (!caps.contains(m.capability))
+            caps << m.capability;
+    }
+    caps.sort();
+    m_capability->addItem(tr("All capabilities"), QString());
+    for (const QString &c : caps)
+        m_capability->addItem(c, c);
+    m_table->sortByColumn(1, Qt::AscendingOrder);
+    body()->addWidget(m_table, 1);
+
+    auto *foot = new QHBoxLayout;
+    m_count = caption(QString());
+    foot->addWidget(m_count, 1);
+    auto *close = button(tr("Close"), true);
+    foot->addWidget(close);
+    body()->addLayout(foot);
+    connect(close, &QPushButton::clicked, this, &PanelOverlay::close);
+    connect(m_search, &QLineEdit::textChanged, this, &PluginsOverlay::filter);
+    connect(m_capability, &QComboBox::currentIndexChanged, this, &PluginsOverlay::filter);
+    filter();
+    m_search->setFocus();
+}
+
+void PluginsOverlay::filter()
+{
+    const QString t = m_search->text().trimmed();
+    const QString cap = m_capability->currentData().toString();
+    int shown = 0;
+    for (int i = 0; i < m_table->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_table->topLevelItem(i);
+        const bool match = (cap.isEmpty() || item->text(1) == cap) &&
+                           (t.isEmpty() || item->text(0).contains(t, Qt::CaseInsensitive) ||
+                            item->text(1).contains(t, Qt::CaseInsensitive) ||
+                            item->toolTip(0).contains(t, Qt::CaseInsensitive));
+        item->setHidden(!match);
+        shown += match;
+    }
+    m_count->setText(shown == m_table->topLevelItemCount() ? tr("%1 plugins").arg(shown)
+                                                           : tr("%1 of %2 plugins").arg(shown).arg(m_table->topLevelItemCount()));
+}
+

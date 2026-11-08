@@ -1205,6 +1205,11 @@ QWidget *SettingsOverlay::pageExtensions()
     v->addWidget(note(tr("The filter modules below come from VLC's plugin folder and power the audio and "
                          "video effects.")));
 
+    auto *all = new QPushButton(tr("Show All Plugins…"));
+    all->setCursor(Qt::PointingHandCursor);
+    connect(all, &QPushButton::clicked, this, &SettingsOverlay::pluginsRequested);
+    v->addWidget(all, 0, Qt::AlignLeft);
+
     // The lists are added below this when the page first opens, so the
     // advanced options get their own holder that stays last.
     auto *advHolder = new QWidget;

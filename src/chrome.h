@@ -3,6 +3,7 @@
 #include "libraryview.h"
 
 #include <QTimer>
+#include <QHash>
 #include <QWidget>
 
 class IconButton;
@@ -75,6 +76,18 @@ private:
 };
 
 // Bottom transport bar.
+// What the playback bar can show. Menu → Customize Player picks the items and
+// their order, left and right of the seek bar (prefs "ui/controlsLeft" and
+// "ui/controlsRight", comma-separated ids). "spacer" and "divider" can repeat.
+struct ControlItem {
+    QString id, label, icon;
+    bool text = false; // shows words (a name) rather than an icon
+};
+const QList<ControlItem> &controlItems();
+const ControlItem *controlItem(const QString &id);
+QStringList defaultControls(bool left);
+QStringList savedControls(bool left);
+
 class ControlBar : public QWidget {
     Q_OBJECT
 public:
@@ -84,8 +97,12 @@ public:
     QWidget *audioButton() const;
     QWidget *subtitleButton() const;
     QWidget *settingsButton() const;
+    QWidget *itemWidget(const QString &id) const; // nullptr when it isn't in the bar
+    void setFavorite(bool on);
+    void rebuild(); // from the saved layout
 
 signals:
+    void actionRequested(const QString &id); // the items without a signal of their own
     void previousClicked();
     void nextClicked();
     void audioClicked();
@@ -103,6 +120,9 @@ private:
     void updateState();
     void showSeekPreview(double ms, const QPoint &pos);
     void hideSeekPreview();
+    QWidget *item(const QString &id); // made on first use
+    void updateLabels();
+    QWidget *anchor(QWidget *preferred) const;
 
     Player *m_player;
     IconButton *m_prev, *m_next, *m_volIcon, *m_audio, *m_subs, *m_settings, *m_queue;
@@ -115,6 +135,11 @@ private:
     QTimer m_seekThrottle;
     qint64 m_pendingSeek = -1;
     bool m_overlay = false;
+    class QHBoxLayout *m_layout;
+    QWidget *m_volumeBox;
+    QHash<QString, QWidget *> m_items;
+    QList<QWidget *> m_transient; // this layout's dividers
+    QStringList m_shown;
 };
 
 // Short message shown over the video ("Resumed at 12:34 · Start over").

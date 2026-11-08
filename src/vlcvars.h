@@ -35,4 +35,11 @@ bool setCoords(void *obj, const char *name, int x, int y);
 // Debug helper: prints the object tree under root.
 void dumpTree(void *root, int depth = 0);
 
+// Every plugin module VLC has loaded (needs a libVLC instance alive).
+struct Module {
+    QString name, longName, capability, object;
+    int score;
+};
+QList<Module> modules();
+
 } // namespace VlcVars

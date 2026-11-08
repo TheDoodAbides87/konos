@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.0 (beta) — 2026-11-07
+
+Group E, the last group of changes from the redesign video: customizing
+(18:24–19:52).
+
+### Added
+- **Customize Player** (18:56): main menu → Customize Player shows every item
+  the playback bar can have, in a box. Drag them into the bar (left or right
+  of the seek bar), along it to re-order them, and back into the box (or
+  right-click) to take them off. Besides the usual buttons there are Stop,
+  Playback Speed, Forward / Backward 10s and 15s, Repeat, Shuffle, Record,
+  Snapshot, Picture in Picture, Fullscreen, Aspect Ratio, Go Home, Replay,
+  Chapters, Bookmark, Bookmarks, Playlists, Properties, Favorite (pins what's
+  playing to the sidebar), Settings and Quit, the file, folder and artist
+  names, a thumbnail, spacers and dividers. Reset to Default puts it back.
+- **Profiles** (19:24): main menu → Profile (Movies, Shows, Music, Work, or
+  New Profile…). Each profile keeps its own settings, effects, keys, playback
+  bar and theme; switching saves the one in use and loads the other. Library
+  folders, the window, sign-ins and update checks are shared. A new profile
+  starts as a copy of the settings in use.
+- **Welcome** (19:44): the first time Konos opens, three steps: a media folder
+  to start with, the theme and accent colour (the app behind changes as you
+  pick), and the basic keyboard shortcuts. Skip leaves everything as it is.
+  It doesn't appear for anyone updating.
+- **Plugins** (18:24): main menu → Plugins & Extensions → Plugins (and
+  Settings → Extensions → Show All Plugins) lists every VLC plugin with its
+  capability and score, searchable and filtered by capability. Read-only:
+  libVLC can't install VLC add-ons, skins or Lua extensions.
+
 ## 0.6.0 (beta) — 2026-11-07
 
 Group D of the changes from the redesign video: menus and dialogs

@@ -7,7 +7,10 @@
 #include "library.h"
 #include "widgets.h"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QHBoxLayout>
+#include <QUrl>
 #include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
@@ -323,6 +326,80 @@ void NavBar::setCurrent(Section section, bool highlight)
 // ---------------------------------------------------------------------------
 // ControlBar
 
+// ---------------------------------------------------------------------------
+// Control items
+
+const QList<ControlItem> &controlItems()
+{
+    static const QList<ControlItem> items = {
+        {"prev", QObject::tr("Previous"), "prev-fill"},
+        {"play", QObject::tr("Play / Pause"), "play-fill"},
+        {"next", QObject::tr("Next"), "next-fill"},
+        {"volume", QObject::tr("Volume"), "volume"},
+        {"audio", QObject::tr("Audio"), "audio"},
+        {"subtitles", QObject::tr("Subtitles"), "subtitles"},
+        {"settings", QObject::tr("Playback Settings"), "tune"},
+        {"queue", QObject::tr("Right Sidebar"), "queue"},
+        {"spacer", QObject::tr("Spacer"), "spacer"},
+        {"divider", QObject::tr("Divider"), "divider"},
+        {"speed", QObject::tr("Playback Speed"), "speed"},
+        {"fwd10", QObject::tr("Forward 10s"), "fwd-10"},
+        {"back10", QObject::tr("Backward 10s"), "back-10"},
+        {"fwd15", QObject::tr("Forward 15s"), "fwd-15"},
+        {"back15", QObject::tr("Backward 15s"), "back-15"},
+        {"stop", QObject::tr("Stop"), "stop"},
+        {"repeat", QObject::tr("Repeat"), "repeat"},
+        {"shuffle", QObject::tr("Shuffle"), "shuffle"},
+        {"record", QObject::tr("Record"), "record"},
+        {"snapshot", QObject::tr("Snapshot"), "camera"},
+        {"pip", QObject::tr("Picture in Picture"), "pip"},
+        {"fullscreen", QObject::tr("Fullscreen"), "fullscreen"},
+        {"aspect", QObject::tr("Aspect Ratio"), "aspect"},
+        {"home", QObject::tr("Go Home"), "home"},
+        {"thumbnail", QObject::tr("Thumbnail"), "film"},
+        {"filename", QObject::tr("File Name"), "file", true},
+        {"artist", QObject::tr("Artist Name"), "artist", true},
+        {"foldername", QObject::tr("Folder Name"), "folder", true},
+        {"info", QObject::tr("Properties"), "info"},
+        {"replay", QObject::tr("Replay"), "refresh"},
+        {"chapters", QObject::tr("Chapters"), "chapters"},
+        {"favorite", QObject::tr("Favorite"), "heart"},
+        {"bookmark", QObject::tr("Bookmark"), "bookmark"},
+        {"bookmarks", QObject::tr("Bookmarks"), "bookmarks"},
+        {"playlists", QObject::tr("Playlists"), "playlist"},
+        {"appsettings", QObject::tr("Konos Settings"), "settings"},
+        {"quit", QObject::tr("Quit Konos"), "quit"},
+    };
+    return items;
+}
+
+const ControlItem *controlItem(const QString &id)
+{
+    for (const ControlItem &i : controlItems())
+        if (i.id == id)
+            return &i;
+    return nullptr;
+}
+
+QStringList defaultControls(bool left)
+{
+    return left ? QStringList{"prev", "play", "next"}
+                : QStringList{"volume", "spacer", "audio", "subtitles", "settings", "queue"};
+}
+
+QStringList savedControls(bool left)
+{
+    const QString key = left ? "ui/controlsLeft" : "ui/controlsRight";
+    const QString saved = prefs().string(key);
+    if (saved == "default")
+        return defaultControls(left);
+    QStringList out;
+    for (const QString &id : saved.split(',', Qt::SkipEmptyParts))
+        if (controlItem(id))
+            out << id;
+    return out;
+}
+
 ControlBar::ControlBar(Player *player, QWidget *parent) : QWidget(parent), m_player(player)
 {
     setObjectName("Chrome");
@@ -377,22 +454,41 @@ ControlBar::ControlBar(Player *player, QWidget *parent) : QWidget(parent), m_pla
     m_queue = new IconButton("queue", this);
     m_queue->setToolTip(tr("Play queue"));
 
-    h->addWidget(m_prev);
-    h->addWidget(m_play);
-    h->addWidget(m_next);
-    h->addSpacing(14);
-    h->addWidget(m_time);
-    h->addWidget(m_seek, 1);
-    h->addWidget(m_duration);
-    h->addSpacing(16);
-    h->addWidget(m_volIcon);
-    h->addWidget(m_volume);
-    h->addSpacing(16);
-    h->addWidget(m_audio);
-    h->addWidget(m_subs);
-    h->addWidget(m_settings);
-    h->addSpacing(8);
-    h->addWidget(m_queue);
+    m_layout = h;
+    m_volumeBox = new QWidget(this);
+    auto *vb = new QHBoxLayout(m_volumeBox);
+    vb->setContentsMargins(0, 0, 0, 0);
+    vb->setSpacing(6);
+    m_volIcon->setParent(m_volumeBox);
+    m_volume->setParent(m_volumeBox);
+    vb->addWidget(m_volIcon);
+    vb->addWidget(m_volume);
+    m_items = {{"prev", m_prev}, {"play", m_play}, {"next", m_next}, {"volume", m_volumeBox},
+               {"audio", m_audio}, {"subtitles", m_subs}, {"settings", m_settings}, {"queue", m_queue}};
+    rebuild();
+    connect(&prefs(), &Prefs::changed, this, [this](const QString &key) {
+        if (key == "ui/controlsLeft" || key == "ui/controlsRight")
+            rebuild();
+        if (key == "playback/repeat" || key == "playback/shuffle") {
+            if (auto *b = qobject_cast<IconButton *>(m_items.value("repeat"))) {
+                const int r = prefs().integer("playback/repeat");
+                b->setIconName(r == 1 ? "repeat-one" : "repeat");
+                b->setActive(r != 0);
+            }
+            if (auto *b = qobject_cast<IconButton *>(m_items.value("shuffle")))
+                b->setActive(prefs().flag("playback/shuffle"));
+        }
+    });
+    connect(player, &Player::recordingChanged, this, [this](bool on) {
+        if (auto *b = qobject_cast<IconButton *>(m_items.value("record")))
+            b->setActive(on);
+    });
+    connect(player, &Player::metaChanged, this, &ControlBar::updateLabels);
+    connect(player, &Player::mediaChanged, this, &ControlBar::updateLabels);
+    connect(&Thumbnailer::instance(), &Thumbnailer::ready, this, [this](const QString &path) {
+        if (path == m_player->location())
+            updateLabels();
+    });
 
     m_volume->setValue(player->volume());
     m_volume->setMuted(player->isMuted());
@@ -476,9 +572,147 @@ ControlBar::ControlBar(Player *player, QWidget *parent) : QWidget(parent), m_pla
     updateState();
 }
 
-QWidget *ControlBar::audioButton() const { return m_audio; }
-QWidget *ControlBar::subtitleButton() const { return m_subs; }
-QWidget *ControlBar::settingsButton() const { return m_settings; }
+// A popup's anchor: the button when it's in the bar, else the bar's right end.
+QWidget *ControlBar::anchor(QWidget *preferred) const
+{
+    if (preferred->isVisibleTo(this))
+        return preferred;
+    for (const char *id : {"settings", "subtitles", "audio", "queue"})
+        if (QWidget *w = m_items.value(id); w && w->isVisibleTo(this))
+            return w;
+    return const_cast<ControlBar *>(this);
+}
+
+QWidget *ControlBar::audioButton() const { return anchor(m_audio); }
+QWidget *ControlBar::subtitleButton() const { return anchor(m_subs); }
+QWidget *ControlBar::settingsButton() const { return anchor(m_settings); }
+
+QWidget *ControlBar::itemWidget(const QString &id) const
+{
+    QWidget *w = m_items.value(id);
+    return w && m_shown.contains(id) ? w : nullptr;
+}
+
+void ControlBar::setFavorite(bool on)
+{
+    if (auto *b = qobject_cast<IconButton *>(m_items.value("favorite"))) {
+        b->setIconName(on ? "heart-fill" : "heart");
+        b->setActive(on);
+        b->setToolTip(on ? tr("Unpin from the sidebar") : tr("Pin to the sidebar"));
+    }
+}
+
+QWidget *ControlBar::item(const QString &id)
+{
+    if (QWidget *w = m_items.value(id))
+        return w;
+    const ControlItem *def = controlItem(id);
+    if (!def)
+        return nullptr;
+    QWidget *w = nullptr;
+    if (def->text) {
+        auto *l = new QLabel(this);
+        l->setProperty("role", "dim");
+        l->setMaximumWidth(240);
+        if (id == "foldername") {
+            l->setCursor(Qt::PointingHandCursor);
+            l->installEventFilter(this);
+        }
+        w = l;
+    } else if (id == "thumbnail") {
+        auto *l = new QLabel(this);
+        l->setFixedSize(54, 32);
+        l->setAlignment(Qt::AlignCenter);
+        l->setStyleSheet(QString("background: %1; border-radius: 4px;").arg(theme().pal().input.name()));
+        w = l;
+    } else {
+        auto *b = new IconButton(def->icon, this);
+        b->setToolTip(def->label);
+        connect(b, &IconButton::clicked, this, [this, id] { emit actionRequested(id); });
+        if (id == "repeat") {
+            const int r = prefs().integer("playback/repeat");
+            b->setIconName(r == 1 ? "repeat-one" : "repeat");
+            b->setActive(r != 0);
+        } else if (id == "shuffle") {
+            b->setActive(prefs().flag("playback/shuffle"));
+        } else if (id == "record") {
+            b->setActive(m_player->isRecording());
+        }
+        w = b;
+    }
+    w->setObjectName("control-" + id);
+    m_items.insert(id, w);
+    return w;
+}
+
+void ControlBar::rebuild()
+{
+    while (QLayoutItem *it = m_layout->takeAt(0)) {
+        if (it->widget())
+            it->widget()->hide();
+        delete it;
+    }
+    qDeleteAll(m_transient);
+    m_transient.clear();
+    m_shown.clear();
+    auto place = [this](const QString &id) {
+        if (id == "spacer") {
+            m_layout->addSpacing(16);
+            return;
+        }
+        if (id == "divider") {
+            auto *d = new QWidget(this);
+            d->setFixedSize(1, 22);
+            d->setStyleSheet(QString("background: %1;").arg(theme().pal().border.name()));
+            m_layout->addWidget(d);
+            m_transient << d;
+            return;
+        }
+        if (QWidget *w = item(id); w && !m_shown.contains(id)) {
+            m_layout->addWidget(w);
+            w->show();
+            m_shown << id;
+        }
+    };
+    for (const QString &id : savedControls(true))
+        place(id);
+    m_layout->addSpacing(14);
+    for (QWidget *w : {static_cast<QWidget *>(m_time), static_cast<QWidget *>(m_seek), static_cast<QWidget *>(m_duration)}) {
+        m_layout->addWidget(w, w == m_seek ? 1 : 0);
+        w->show();
+    }
+    m_layout->addSpacing(16);
+    for (const QString &id : savedControls(false))
+        place(id);
+    updateLabels();
+}
+
+void ControlBar::updateLabels()
+{
+    const QString loc = m_player->location();
+    const QFileInfo fi(Library::isUrl(loc) ? QUrl(loc).path() : loc);
+    auto setText = [this](const QString &id, const QString &text) {
+        if (auto *l = qobject_cast<QLabel *>(m_items.value(id))) {
+            l->setText(l->fontMetrics().elidedText(text, Qt::ElideRight, l->maximumWidth()));
+            l->setToolTip(text);
+        }
+    };
+    setText("filename", loc.isEmpty() ? QString() : (m_player->title().isEmpty() ? fi.fileName() : m_player->title()));
+    setText("artist", m_player->artist());
+    setText("foldername", loc.isEmpty() || Library::isUrl(loc) ? QString() : fi.dir().dirName());
+    if (auto *l = qobject_cast<QLabel *>(m_items.value("thumbnail"))) {
+        QPixmap pm;
+        if (!m_player->artworkPath().isEmpty())
+            pm.load(m_player->artworkPath());
+        if (pm.isNull() && !loc.isEmpty() && !Library::isUrl(loc))
+            pm = Thumbnailer::instance().get(loc);
+        if (!pm.isNull()) { // fill the box, cropped to the middle
+            pm = pm.scaled(l->size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            pm = pm.copy((pm.width() - l->width()) / 2, (pm.height() - l->height()) / 2, l->width(), l->height());
+        }
+        l->setPixmap(pm.isNull() ? theme().pixmap("film", theme().pal().textDim, 18) : pm);
+    }
+}
 
 void ControlBar::setQueueActive(bool active)
 {
@@ -564,6 +798,10 @@ bool ControlBar::eventFilter(QObject *obj, QEvent *event)
     // Clicking the duration toggles between total and remaining time.
     if (obj == m_duration && event->type() == QEvent::MouseButtonRelease) {
         prefs().set("ui/remainingTime", !prefs().flag("ui/remainingTime"));
+        return true;
+    }
+    if (obj == m_items.value("foldername") && event->type() == QEvent::MouseButtonRelease) {
+        emit actionRequested("foldername");
         return true;
     }
     return QWidget::eventFilter(obj, event);

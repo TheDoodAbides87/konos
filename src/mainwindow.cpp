@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 #include "mediadialogs.h"
 #include "shortcuts.h"
+#include "customizeplayer.h"
+#include "onboarding.h"
+#include "profiles.h"
 #include "mediainfocard.h"
 #include "showpresets.h"
 #include "subtitletimeline.h"
@@ -200,6 +203,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         showPlayer();
     if (prefs().flag("startup/restoreSession"))
         QMetaObject::invokeMethod(this, &MainWindow::restoreSession, Qt::QueuedConnection);
+    // The first time Konos runs: welcome, theme, keys. Not in scripted test runs.
+    if (Onboarding::wanted() && qEnvironmentVariableIsEmpty("KONOS_SCRIPT"))
+        QMetaObject::invokeMethod(this, [this] { (new Onboarding(this))->open(); }, Qt::QueuedConnection);
+    else if (!QSettings().contains("onboarding/done"))
+        QSettings().setValue("onboarding/done", true); // people updating from 0.6 have set things up already
 #ifdef KONOS_DEVHOOKS
     runDevScript();
 #endif
@@ -524,6 +532,12 @@ void MainWindow::buildUi()
             [this] { m_quick->openAt(m_controls->subtitleButton(), QuickSettings::SubtitlesTab); });
     connect(m_controls, &ControlBar::settingsClicked, this,
             [this] { m_quick->openAt(m_controls->settingsButton(), QuickSettings::PlaybackTab); });
+    connect(m_controls, &ControlBar::actionRequested, this, &MainWindow::controlAction);
+    auto updateFavorite = [this] {
+        m_controls->setFavorite(!m_current.isEmpty() && library().isPinned("file", m_current));
+    };
+    connect(m_player, &Player::mediaChanged, this, updateFavorite);
+    connect(&library(), &Library::pinsChanged, this, updateFavorite);
     connect(m_controls, &ControlBar::queueClicked, this, [this] {
         if (m_view != View::Player) { // the queue beside the library
             m_libraryQueue = !(m_libraryQueue && m_panel->tab() == PlayerPanel::QueueTab);
@@ -556,6 +570,10 @@ void MainWindow::buildUi()
         playItems({url}, 0);
     });
     connect(m_settings, &SettingsOverlay::recordToggled, this, &MainWindow::toggleRecording);
+    connect(m_settings, &SettingsOverlay::pluginsRequested, this, [this] {
+        m_settings->close();
+        (new PluginsOverlay(this))->open();
+    });
     connect(m_settings, &SettingsOverlay::shortcutsRequested, this, [this] {
         m_settings->close();
         showShortcuts();
@@ -715,12 +733,7 @@ void MainWindow::createActions()
     key("jumpFwd", [seekBy] { seekBy(60); });
     key("jumpBack", [seekBy] { seekBy(-60); });
     // VLC's keys for cycling the aspect ratio, subtitle track and audio track.
-    key("aspect", [this] {
-        const QStringList ratios = VideoWidget::aspectRatios();
-        const QString next = ratios.value((ratios.indexOf(prefs().string("video/aspect")) + 1) % ratios.size());
-        prefs().set("video/aspect", next);
-        m_toast->show(tr("Aspect ratio: %1").arg(next == "Auto" ? tr("Auto") : next), {}, {}, 1400);
-    });
+    key("aspect", [this] { cycleAspect(); });
     auto cycleTrack = [this](bool subtitles) {
         const QList<Player::Track> tracks = subtitles ? m_player->subtitleTracks() : m_player->audioTracks();
         if (tracks.size() < 2) {
@@ -1452,6 +1465,96 @@ void MainWindow::openNetwork()
     dialog->open();
 }
 
+void MainWindow::customizePlayer()
+{
+    (new CustomizePlayerOverlay(this))->open();
+}
+
+void MainWindow::cycleAspect()
+{
+    const QStringList ratios = VideoWidget::aspectRatios();
+    const QString next = ratios.value((ratios.indexOf(prefs().string("video/aspect")) + 1) % ratios.size());
+    prefs().set("video/aspect", next);
+    m_toast->show(tr("Aspect ratio: %1").arg(next == "Auto" ? tr("Auto") : next), {}, {}, 1400);
+}
+
+// The playback bar's optional items (Menu → Customize Player).
+void MainWindow::controlAction(const QString &id)
+{
+    const bool media = m_player->hasMedia();
+    auto seek = [this, media](int seconds) {
+        if (media)
+            m_player->seekRelative(qint64(seconds) * 1000);
+    };
+    if (id == "stop")
+        m_actStop->trigger();
+    else if (id == "fwd10")
+        seek(10);
+    else if (id == "back10")
+        seek(-10);
+    else if (id == "fwd15")
+        seek(15);
+    else if (id == "back15")
+        seek(-15);
+    else if (id == "speed") {
+        QMenu menu(this);
+        for (double r : {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0}) {
+            QAction *a = menu.addAction(QString("%1×").arg(r), this, [this, r] { m_player->setRate(float(r)); });
+            a->setCheckable(true);
+            a->setChecked(qAbs(m_player->rate() - r) < 0.01);
+        }
+        QWidget *at = m_controls->itemWidget("speed");
+        menu.exec(at ? at->mapToGlobal(QPoint(0, -menu.sizeHint().height())) : QCursor::pos());
+    } else if (id == "repeat") {
+        static const int next[] = {2, 0, 1}; // off → all → one → off
+        prefs().set("playback/repeat", next[qBound(0, prefs().integer("playback/repeat"), 2)]);
+    } else if (id == "shuffle")
+        prefs().set("playback/shuffle", !prefs().flag("playback/shuffle"));
+    else if (id == "record")
+        toggleRecording();
+    else if (id == "snapshot")
+        takeSnapshot();
+    else if (id == "pip")
+        setPip(!m_pip);
+    else if (id == "fullscreen")
+        setFullscreen(!m_fullscreen);
+    else if (id == "aspect")
+        cycleAspect();
+    else if (id == "home")
+        showLibrary(Section::Home);
+    else if (id == "info" && !m_current.isEmpty())
+        (new MediaInfoOverlay(m_current, this))->open();
+    else if (id == "replay" && media)
+        m_player->seek(0);
+    else if (id == "chapters")
+        openPlayerPanel(PlayerPanel::ChaptersTab);
+    else if (id == "bookmarks")
+        openPlayerPanel(PlayerPanel::BookmarksTab);
+    else if (id == "bookmark" && media) {
+        m_panel->addBookmark();
+        m_toast->show(tr("Bookmark added"), {}, {}, 1500);
+    } else if (id == "playlists")
+        openSidePanel(Section::Playlists);
+    else if (id == "favorite" && !m_current.isEmpty()) {
+        // "Favorite" pins the item to the sidebar (and unpins it).
+        if (library().isPinned("file", m_current)) {
+            library().unpin("file", m_current);
+            m_toast->show(tr("Unpinned from the sidebar"), {}, {}, 1500);
+        } else {
+            library().pin({"file", m_current, Library::displayName(m_current),
+                           int(Library::isAudioFile(m_current) ? Section::Music : Section::Videos)});
+            m_toast->show(tr("Pinned to the sidebar"), {}, {}, 1500);
+        }
+    } else if (id == "foldername" && !m_current.isEmpty() && !Library::isUrl(m_current)) {
+        const bool music = Library::isAudioFile(m_current);
+        m_library->showFolder(music ? Section::Music : Section::Videos, QFileInfo(m_current).absolutePath());
+        setView(View::Library);
+    } else if (id == "appsettings")
+        m_settings->open();
+    else if (id == "quit")
+        close();
+}
+
 void MainWindow::openFile()
 {
     const QString file = FileDialogs::openFile(this, tr("Open file"),
@@ -1796,9 +1899,34 @@ QMenu *MainWindow::buildMainMenu()
     menu->addAction(m_actSavePlaylist);
     menu->addAction(m_actConvert);
     menu->addAction(m_actStream);
+    // Profiles (19:24): the one in use is ticked.
+    Profiles &profiles = Profiles::instance();
+    QMenu *profile = menu->addMenu(theme().icon("artist", a), tr("Profile (%1)").arg(profiles.current()));
+    for (const QString &name : profiles.names()) {
+        QAction *act = profile->addAction(name, this, [this, name] {
+            Profiles::instance().switchTo(name);
+            m_toast->show(tr("Profile: %1").arg(name), {}, {}, 1800);
+        });
+        act->setCheckable(true);
+        act->setChecked(name == profiles.current());
+    }
+    profile->addSeparator();
+    profile->addAction(theme().icon("plus", a), tr("New Profile…"), this, [this] { (new NewProfileOverlay(this))->open(); });
+    if (profiles.names().size() > 1) {
+        QMenu *del = profile->addMenu(theme().icon("trash", a), tr("Delete Profile"));
+        for (const QString &name : profiles.names())
+            if (name != profiles.current())
+                del->addAction(name, this, [this, name] {
+                    if (QMessageBox::question(this, tr("Delete profile"),
+                                              tr("Delete the profile “%1” and its settings?").arg(name)) == QMessageBox::Yes)
+                        Profiles::instance().remove(name);
+                });
+    }
     menu->addAction(m_actShortcuts);
+    menu->addAction(theme().icon("brush", a), tr("Customize Player"), this, &MainWindow::customizePlayer);
     QMenu *plugins = menu->addMenu(theme().icon("puzzle", a), tr("Plugins && Extensions"));
-    plugins->addAction(theme().icon("puzzle", a), tr("Audio and Video Filters…"), this,
+    plugins->addAction(theme().icon("puzzle", a), tr("Plugins…"), this, [this] { (new PluginsOverlay(this))->open(); });
+    plugins->addAction(theme().icon("tune", a), tr("Audio and Video Filters…"), this,
                        [this] { m_settings->open(SettingsOverlay::Extensions); });
     menu->addAction(m_actSettings);
     menu->addAction(m_actAbout);
@@ -2498,6 +2626,40 @@ void MainWindow::runDevScript()
                 emit UpdateCheck::instance().finished(true, arg, "https://github.com/" KONOS_RELEASES_REPO "/releases", {}, false);
             else if (cmd == "shortcuts")
                 showShortcuts();
+            else if (cmd == "customize")
+                customizePlayer();
+            else if (cmd == "ctl") { // ctl:insert,id,left|right,index · ctl:remove,left|right,index · ctl:save · ctl:print
+                if (auto *ed = findChild<CustomizePlayerOverlay *>()) {
+                    const QStringList a = arg.split(',');
+                    if (a[0] == "insert")
+                        ed->insert(a.value(1), a.value(2) == "left", a.value(3).toInt());
+                    else if (a[0] == "remove")
+                        ed->remove(a.value(1) == "left", a.value(2).toInt());
+                    qInfo() << "ctl left" << ed->items(true) << "right" << ed->items(false);
+                    if (a[0] == "save")
+                        for (QPushButton *b : ed->findChildren<QPushButton *>())
+                            if (b->text() == tr("Save")) {
+                                b->click();
+                                break;
+                            }
+                }
+                qInfo() << "bar left" << savedControls(true) << "right" << savedControls(false);
+            } else if (cmd == "plugins")
+                (new PluginsOverlay(this))->open();
+            else if (cmd == "profile") // profile:Name (switch) · profile:+Name (create) · profile:-Name (delete)
+            {
+                if (arg.startsWith('+'))
+                    Profiles::instance().create(arg.mid(1));
+                else if (arg.startsWith('-'))
+                    Profiles::instance().remove(arg.mid(1));
+                else
+                    Profiles::instance().switchTo(arg);
+                qInfo() << "profile" << Profiles::instance().current() << Profiles::instance().names();
+            } else if (cmd == "onboarding") { // onboarding[:step]
+                auto *o = new Onboarding(this);
+                o->open();
+                o->setStep(arg.toInt());
+            }
             else if (cmd == "keyset") { // keyset:id=Ctrl+K,Alt+K (empty: none; "default": the default)
                 Shortcuts::KeyMap keys = Shortcuts::instance().all();
                 const QString id = arg.section('=', 0, 0), value = arg.section('=', 1);

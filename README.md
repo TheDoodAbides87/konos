@@ -27,7 +27,7 @@ shape in the app.
 
 Licensed under the [MIT licence](LICENSE).
 
-**Version 0.6.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
+**Version 0.7.0 (beta).** See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's implemented
 
@@ -55,6 +55,10 @@ Licensed under the [MIT licence](LICENSE).
 | Add Subtitles: computer / OpenSubtitles / link, per file, folder or playlist (`Add Subtitles` mockups) | `src/subtitleoverlay.cpp`, `src/opensubtitles.cpp` |
 | Main menu, Capture Device, Convert / Save, Stream, About | `MainWindow::buildMainMenu`, `src/mediadialogs.cpp` |
 | Keyboard Shortcuts dialog (changeable keys) | `src/shortcuts.cpp` |
+| Customize Player (drag items into and out of the playback bar) | `src/customizeplayer.cpp`, `ControlBar::rebuild` |
+| Profiles (Movies, Shows, Music, Work, your own) | `src/profiles.cpp` |
+| Welcome on first launch: folder, theme, keys | `src/onboarding.cpp` |
+| Plugins list (read-only) | `PluginsOverlay` in `src/mediadialogs.cpp` |
 
 All settings are functional: effects apply live, the play queue supports
 shuffle/repeat, playback positions are remembered (and shown as progress bars),

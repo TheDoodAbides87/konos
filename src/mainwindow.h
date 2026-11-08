@@ -71,6 +71,9 @@ private:
     void updateTitle();
 
     void openFile();
+    void cycleAspect();
+    void controlAction(const QString &id);
+    void customizePlayer();
     void openFiles();
     void openFolder();
     void openCapture();

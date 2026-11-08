@@ -55,6 +55,8 @@ int main(int argc, char *argv[])
     QApplication::setDesktopFileName(KONOS_APP_ID);
     QApplication app(argc, argv);
     migrateOldNames();
+    // Before anything is saved: no settings at all means Konos's first run (onboarding).
+    app.setProperty("konosFirstRun", QSettings().allKeys().isEmpty());
     {
         // 0.6: "Load matching subtitle files" (on/off) became a choice of how
         // closely the names must match; off stays off.

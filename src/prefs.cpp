@@ -24,6 +24,8 @@ static const QHash<QString, QVariant> &defaults()
         {"ui/miniCorner", 3},     // 0 top left, 1 top right, 2 bottom left, 3 bottom right
         {"ui/libraryQueue", false}, // the queue beside the library
         {"ui/viewModes", ""},
+        {"ui/controlsLeft", "default"},  // Customize Player: ids left of the seek bar
+        {"ui/controlsRight", "default"}, // …and right of it
         {"ui/rightPanel", false},
         {"audio/device", ""},
         {"osd/showKeys", true},

@@ -24,6 +24,7 @@ signals:
     void openUrlRequested(const QString &url);
     void recordToggled();
     void shortcutsRequested();
+    void pluginsRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;

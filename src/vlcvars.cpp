@@ -9,6 +9,7 @@
 #endif
 #include <vlc_common.h>
 #include <vlc_variables.h>
+#include <vlc_modules.h>
 
 namespace VlcVars {
 
@@ -131,6 +132,23 @@ void dumpTree(void *root, int depth)
         dumpTree(child, depth + 1);
     }
     vlc_list_release(list);
+}
+
+QList<Module> modules()
+{
+    QList<Module> out;
+    size_t n = 0;
+    module_t **list = module_list_get(&n);
+    for (size_t i = 0; i < n; ++i) {
+        const module_t *m = list[i];
+        const char *cap = module_get_capability(m);
+        if (!cap || !*cap || !strcmp(cap, "none"))
+            continue; // the core itself and sub-module stubs
+        out.append({QString::fromUtf8(module_get_name(m, false)), QString::fromUtf8(module_get_name(m, true)),
+                    QString::fromUtf8(cap), QString::fromUtf8(module_get_object(m)), module_get_score(m)});
+    }
+    module_list_free(list);
+    return out;
 }
 
 } // namespace VlcVars

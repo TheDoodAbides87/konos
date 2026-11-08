@@ -30,6 +30,9 @@ SOURCES += \
     src/miniplayer.cpp \
     src/shortcuts.cpp \
     src/mediadialogs.cpp \
+    src/customizeplayer.cpp \
+    src/profiles.cpp \
+    src/onboarding.cpp \
     src/showpresets.cpp \
     src/subtitlecues.cpp \
     src/subtitletimeline.cpp \
@@ -70,6 +73,9 @@ HEADERS += \
     src/miniplayer.h \
     src/shortcuts.h \
     src/mediadialogs.h \
+    src/customizeplayer.h \
+    src/profiles.h \
+    src/onboarding.h \
     src/showpresets.h \
     src/subtitlecues.h \
     src/subtitletimeline.h \
