@@ -10,8 +10,6 @@ pkgrel=1
 pkgdesc="Konos Media Player: plays videos, music, discs and streams (libVLC)"
 arch=('x86_64')
 url="https://github.com/TheDoodAbides87/konos-releases"
-replaces=('vmp')    # the 0.5 name; pacman -Syu swaps it for konos
-conflicts=('vmp')
 license=('MIT')
 depends=(
     'qt6-base' 'qt6-svg' 'qt6-wayland' 'taglib' 'hicolor-icon-theme'

@@ -18,8 +18,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 
-// Konos was called VMP (0.5), OmaVideo (0.2–0.4) and "VLC Redesign" before
-// that. On first launch, copy the newest older settings and library (not
+// Konos was called OmaVideo (0.2–0.4) and "VLC Redesign" before that. On first launch, copy the newest older settings and library (not
 // caches, which rebuild themselves).
 static void migrateOldNames()
 {
@@ -29,7 +28,7 @@ static void migrateOldNames()
     const QString newData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (QFile::exists(newConf) || QDir(newData).exists())
         return;
-    for (const QString &old : {QStringLiteral("vmp"), QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
+    for (const QString &old : {QStringLiteral("omavideo"), QStringLiteral("vlc-redesign")}) {
         const QString oldConf = config + "/" + old + "/" + old + ".conf";
         const QDir oldData(data + "/" + old + "/" + old);
         if (!QFile::exists(oldConf) && !oldData.exists())

@@ -52,7 +52,7 @@ fi
 
 echo ">> makepkg"
 mkdir -p "$DIST"
-find "$DIST" -maxdepth 1 -type f \( -name 'konos*' -o -name 'vmp.*' -o -name 'Konos-*.AppImage' \) -delete
+find "$DIST" -maxdepth 1 -type f \( -name 'konos*' -o -name 'Konos-*.AppImage' \) -delete
 (cd "$ARCH_DIR" && PKGDEST="$DIST" makepkg --force --cleanbuild --clean)
 PKG="$(find "$DIST" -maxdepth 1 -name "konos-$PKGVER-*.pkg.tar.zst" | head -n1)"
 
@@ -61,12 +61,6 @@ repo-add "$DIST/konos.db.tar.gz" "$PKG"
 # repo-add makes konos.db / konos.files symlinks; release assets must be real files.
 for f in konos.db konos.files; do
     cp --remove-destination "$(readlink -f "$DIST/$f")" "$DIST/$f"
-done
-# Transition from the 0.5 name: copies under the old [vmp] repo name, so a
-# pacman.conf that still says [vmp] keeps updating (and swaps vmp for konos).
-# Drop these once nobody is on 0.5 any more.
-for f in db files; do
-    cp "$DIST/konos.$f" "$DIST/vmp.$f"
 done
 echo ">> built: $PKG"
 APPIMAGE=""
@@ -95,7 +89,8 @@ CREDITS
 
 echo
 echo "About to publish $TAG to https://github.com/$REPO (public) with:"
-ls -1 "$DIST" | grep -v notes.md | sed 's/^/  /'
+ASSETS=("$PKG" "$DIST/konos.db" "$DIST/konos.db.tar.gz" "$DIST/konos.files" "$DIST/konos.files.tar.gz" ${APPIMAGE:+"$APPIMAGE"})
+printf '  %s\n' "${ASSETS[@]##*/}"
 read -r -p "Publish? [y/N] " answer
 [ "$answer" = "y" ] || [ "$answer" = "Y" ] || { echo "Not published."; exit 0; }
 
@@ -103,5 +98,5 @@ read -r -p "Publish? [y/N] " answer
 # skips pre-releases.
 gh release create "$TAG" --repo "$REPO" --title "Konos $VERSION${CHANNEL:+ $CHANNEL}" \
     --notes-file "$NOTES" --latest \
-    "$PKG" "$DIST/konos.db" "$DIST/konos.db.tar.gz" "$DIST/konos.files" "$DIST/konos.files.tar.gz" "$DIST/vmp.db" "$DIST/vmp.files" ${APPIMAGE:+"$APPIMAGE"}
+    "${ASSETS[@]}"
 echo ">> published $TAG"

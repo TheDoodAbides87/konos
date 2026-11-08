@@ -103,12 +103,10 @@ Group E, the last group of changes from the redesign video: customizing
 Group D of the changes from the redesign video: menus and dialogs
 (12:56–13:04, 15:56–17:32).
 
-**VMP is now Konos** (Konos Media Player), after the Greek word for cone. The
-package, app, settings folder and GitHub repositories have the new name; your
-settings and library carry over on first launch. On Arch, `sudo pacman -Syu`
-swaps `vmp` for `konos`. Rename `[vmp]` to `[konos]` in `/etc/pacman.conf` and
-point it at `konos-releases` (see the README) when convenient: the old entry
-keeps working for now.
+**OmaVideo is now Konos** (Konos Media Player), after the Greek word for
+cone: it plays music as much as video. The package, app, settings folder and
+GitHub repositories have the new name; your settings and library carry over
+on first launch.
 
 ### Added
 - **The main menu from the video** (12:56): the title bar's menu now lists
@@ -158,14 +156,7 @@ keeps working for now.
 
 ## 0.5.0 (beta) — 2026-11-07
 
-Group C of the changes from the redesign video: the library (10:27–13:44),
-and the move from OmaVideo to VMP.
-
-### Renamed
-- **OmaVideo is now VMP (Vibes Media Player)**: it plays music as much as
-  video. The program is `vmp`; settings, library and presets move over from
-  OmaVideo on first launch. New icon: a blocky traffic cone stood on its tip
-  with a V cut into it.
+Group C of the changes from the redesign video: the library (10:27–13:44).
 
 ### Added
 - **Sorting like the video** (10:42): Videos and other lists sort by
@@ -203,7 +194,7 @@ and the move from OmaVideo to VMP.
   podcasts by name, lists your subscriptions and their episodes (which
   resume where you left off).
 - **Update check**: once a day (Settings → General → Updates, on by default)
-  VMP asks GitHub for the latest release and shows a notice when a newer one
+  Konos asks GitHub for the latest release and shows a notice when a newer one
   is out; **Check Now** checks straight away. The AppImage updates itself
   (**Update Now**); the Arch package updates with `pacman -Syu`.
 - **MIT licence.**
@@ -211,7 +202,7 @@ and the move from OmaVideo to VMP.
 ### Changed
 - **Packaging**: the Omarchy build is now an Arch package
   (`packaging/arch/PKGBUILD`) published as a pacman repository on the public
-  releases repo, so `pacman -Syu` keeps VMP up to date. Other Linux
+  releases repo, so `pacman -Syu` keeps Konos up to date. Other Linux
   distributions get the AppImage (`packaging/build-appimage.sh`), attached
   to the same releases. `packaging/release.sh` builds and publishes both. A
   macOS `.dmg` and a Windows installer are planned.
