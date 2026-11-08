@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "musicindex.h"
 #include "library.h"
 #include "prefs.h"
@@ -121,10 +122,7 @@ void MusicIndex::ensureScanned()
 
 void MusicIndex::load()
 {
-    QFile f(indexFile());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject root = DataFile::readJson(indexFile());
     // Version 1 didn't store years: keep showing it, but read every file again.
     const bool stale = root.value("version").toInt() < 2;
     const QJsonArray arr = root.value("tracks").toArray();
@@ -170,10 +168,7 @@ void MusicIndex::save() const
             o.insert("d", double(t.duration));
         arr.append(o);
     }
-    QDir().mkpath(QFileInfo(indexFile()).absolutePath());
-    QFile f(indexFile());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(QJsonObject{{"version", 2}, {"tracks", arr}}).toJson(QJsonDocument::Compact));
+    DataFile::write(indexFile(), QJsonDocument(QJsonObject{{"version", 2}, {"tracks", arr}}).toJson(QJsonDocument::Compact));
 }
 
 void MusicIndex::rescan()

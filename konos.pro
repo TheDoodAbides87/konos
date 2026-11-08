@@ -29,6 +29,7 @@ SOURCES += \
     src/librarydialogs.cpp \
     src/miniplayer.cpp \
     src/shortcuts.cpp \
+    src/datafile.cpp \
     src/mediadialogs.cpp \
     src/customizeplayer.cpp \
     src/profiles.cpp \
@@ -72,6 +73,7 @@ HEADERS += \
     src/librarydialogs.h \
     src/miniplayer.h \
     src/shortcuts.h \
+    src/datafile.h \
     src/mediadialogs.h \
     src/customizeplayer.h \
     src/profiles.h \

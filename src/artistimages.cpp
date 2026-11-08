@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "artistimages.h"
 #include "version.h"
 #include "library.h"
@@ -244,9 +245,8 @@ void ArtistImages::done(const QString &name, const QByteArray &data)
     const QString base = cacheBase(name);
     QString file;
     if (!data.isEmpty()) {
-        QFile f(base + ".jpg");
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(data) == data.size())
-            file = f.fileName();
+        if (DataFile::write(base + ".jpg", data))
+            file = base + ".jpg";
     } else {
         QFile marker(base + ".none");
         if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate))

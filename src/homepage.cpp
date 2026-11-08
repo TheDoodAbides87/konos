@@ -79,10 +79,7 @@ protected:
             p.fillRect(thumb, theme().isDark() ? theme().tone(QColor(0x1c, 0x1c, 0x1c)) : c.surface);
         }
         if (!pm.isNull()) {
-            const QSizeF scaled = QSizeF(pm.size()).scaled(thumb.size(), Qt::KeepAspectRatioByExpanding);
-            p.drawPixmap(QRectF(thumb.center().x() - scaled.width() / 2, thumb.center().y() - scaled.height() / 2,
-                                scaled.width(), scaled.height()),
-                         pm, QRectF(pm.rect()));
+            p.drawPixmap(thumb.topLeft(), Thumbnailer::scaled(pm, thumb.size().toSize(), dpr, Qt::KeepAspectRatioByExpanding));
         } else if (kind != EntryKind::Video) {
             const int s = kind == EntryKind::Audio ? int(thumb.height() * 0.55) : 34;
             const QColor ic = kind == EntryKind::Audio ? theme().accent() : c.textDim;
@@ -252,7 +249,9 @@ HomePage::HomePage(QWidget *parent) : QScrollArea(parent)
     connect(&library(), &Library::positionsChanged, this, [this] {
         for (HomeCard *c : std::as_const(m_continue->cards))
             c->update();
-        if (isVisible())
+        // Rebuild only when a video joins or leaves Continue Watching; a new
+        // position just redraws its card's progress bar (above).
+        if (isVisible() && continueWatching() != m_shownContinue)
             m_reload.start();
     });
     connect(&theme(), &Theme::changed, this, [this] { widget()->update(); });
@@ -262,21 +261,29 @@ HomePage::HomePage(QWidget *parent) : QScrollArea(parent)
     });
 }
 
+// Unfinished videos, most recent first.
+QStringList HomePage::continueWatching() const
+{
+    QStringList videos;
+    for (const QString &loc : library().recent()) {
+        const double progress = library().progress(loc);
+        if (Library::kindFor(loc) == EntryKind::Video && progress > 0.01 && progress < 0.95 && videos.size() < 12)
+            videos << loc;
+    }
+    return videos;
+}
+
 void HomePage::reload()
 {
     for (HomeRow *row : {m_continue, m_listen, m_folders})
         row->clear();
 
-    // Continue Watching: unfinished videos, most recent first.
-    QStringList videos, audio;
-    for (const QString &loc : library().recent()) {
-        const EntryKind kind = Library::kindFor(loc);
-        const double progress = library().progress(loc);
-        if (kind == EntryKind::Video && progress > 0.01 && progress < 0.95 && videos.size() < 12)
-            videos << loc;
-        else if (kind == EntryKind::Audio && audio.size() < 16)
+    const QStringList videos = continueWatching();
+    m_shownContinue = videos;
+    QStringList audio;
+    for (const QString &loc : library().recent())
+        if (Library::kindFor(loc) == EntryKind::Audio && audio.size() < 16)
             audio << loc;
-    }
     for (int i = 0; i < videos.size(); ++i) {
         HomeCard *card = m_continue->add();
         card->kind = EntryKind::Video;

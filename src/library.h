@@ -134,14 +134,20 @@ private:
 
 inline Library &library() { return Library::instance(); }
 
-// Generates and caches thumbnails in the background.
+// Generates and caches thumbnails in the background. Pictures are read and
+// decoded on worker threads, never while the library is painting.
 class Thumbnailer : public QObject {
     Q_OBJECT
 public:
     static Thumbnailer &instance();
 
-    // Returns a cached thumbnail, or a null pixmap and queues generation.
+    // Returns a cached thumbnail, or a null pixmap and loads (or makes) it;
+    // ready() follows.
     QPixmap get(const QString &path);
+    // A copy of pm at the size it's shown, made once and kept: drawing a
+    // 480-pixel thumbnail into a small tile on every repaint is slow.
+    // KeepAspectRatioByExpanding crops to the middle (covers); KeepAspectRatio fits.
+    static QPixmap scaled(const QPixmap &pm, const QSize &size, qreal dpr, Qt::AspectRatioMode mode);
     // Look again next time (e.g. a cover turned up for this file).
     void forget(const QString &path);
     void clearCache();
@@ -154,11 +160,15 @@ private:
     QString cacheFile(const QString &path) const;
     void pump();
     void finished(const QString &path, const QString &out, bool ok);
+    void loaded(const QString &path, const QImage &image, int result);
+    void insert(const QString &path, const QPixmap &pm);
 
     QCache<QString, QPixmap> m_memory;
     QQueue<QString> m_queue;
     QSet<QString> m_pending;
     QSet<QString> m_failed;
+    QSet<QString> m_loading; // being read on a worker thread
+    quint64 m_epoch = 0;     // bumped by forget()/clearCache(): older loads are dropped
     int m_running = 0;
     QString m_tool; // "ffmpegthumbnailer", "ffmpeg" or empty
 };

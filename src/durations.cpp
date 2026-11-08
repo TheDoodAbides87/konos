@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "durations.h"
 #include "library.h"
 #include "musicindex.h"
@@ -31,12 +32,9 @@ Durations &Durations::instance()
 
 Durations::Durations()
 {
-    QFile f(storeFile());
-    if (f.open(QIODevice::ReadOnly)) {
-        const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-        for (auto it = o.begin(); it != o.end(); ++it)
-            m_known.insert(it.key(), qint64(it.value().toDouble()));
-    }
+    const QJsonObject o = DataFile::readJson(storeFile());
+    for (auto it = o.begin(); it != o.end(); ++it)
+        m_known.insert(it.key(), qint64(it.value().toDouble()));
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(2000);
     connect(&m_saveTimer, &QTimer::timeout, this, &Durations::save);
@@ -114,8 +112,5 @@ void Durations::save()
     for (auto it = m_known.constBegin(); it != m_known.constEnd(); ++it)
         if (QFileInfo::exists(it.key().section('\n', 0, 0)))
             o.insert(it.key(), double(it.value()));
-    QDir().mkpath(QFileInfo(storeFile()).absolutePath());
-    QFile f(storeFile());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    DataFile::write(storeFile(), QJsonDocument(o).toJson(QJsonDocument::Compact));
 }

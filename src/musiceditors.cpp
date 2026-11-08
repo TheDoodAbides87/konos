@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "musiceditors.h"
 #include "artistimages.h"
 #include "filedialogs.h"
@@ -622,9 +623,8 @@ void AlbumEditorOverlay::save()
         if (reply->error() != QNetworkReply::NoError)
             qWarning() << "cover download failed:" << reply->error() << reply->errorString();
         if (reply->error() == QNetworkReply::NoError) {
-            QFile cover(QFileInfo(tracks.value(0)).absolutePath() + "/cover.jpg");
-            if (cover.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                cover.write(reply->readAll());
+            // Replaces any cover.jpg there only once the new one is complete.
+            DataFile::write(QFileInfo(tracks.value(0)).absolutePath() + "/cover.jpg", reply->readAll());
             for (const QString &p : tracks)
                 Thumbnailer::instance().forget(p);
         }

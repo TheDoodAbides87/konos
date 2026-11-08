@@ -444,10 +444,7 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
             clip.addRoundedRect(tile, 4, 4);
             p->save();
             p->setClipPath(clip);
-            const QSizeF sc = QSizeF(cover.size()).scaled(tile.size(), Qt::KeepAspectRatioByExpanding);
-            p->drawPixmap(QRectF(tile.center().x() - sc.width() / 2, tile.center().y() - sc.height() / 2, sc.width(),
-                                 sc.height()),
-                          cover, QRectF(cover.rect()));
+            p->drawPixmap(tile.topLeft(), Thumbnailer::scaled(cover, tile.size().toSize(), dpr, Qt::KeepAspectRatioByExpanding));
             p->restore();
             if (current) {
                 p->setPen(QPen(theme().accent(), 1.5));
@@ -519,15 +516,15 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
     const QPixmap pm = kind == EntryKind::Action || kind == EntryKind::Category ? QPixmap() : thumbnail(index);
     if (!pm.isNull() && isWebImage(index.data(ThumbRole).toString())) {
         // Station logos and podcast artwork: the whole picture, centred.
-        const QSizeF fit = QSizeF(pm.size()).scaled(thumb.size() * (kind == EntryKind::Stream ? 0.62 : 1.0), Qt::KeepAspectRatio);
-        p->drawPixmap(QRectF(thumb.center().x() - fit.width() / 2, thumb.center().y() - fit.height() / 2, fit.width(), fit.height()),
-                      pm, QRectF(pm.rect()));
+        const QSizeF box = thumb.size() * (kind == EntryKind::Stream ? 0.62 : 1.0);
+        const QPixmap fit = Thumbnailer::scaled(pm, box.toSize(), p->device()->devicePixelRatioF(), Qt::KeepAspectRatio);
+        const QSizeF fs = fit.deviceIndependentSize();
+        p->drawPixmap(QPointF(thumb.center().x() - fs.width() / 2, thumb.center().y() - fs.height() / 2), fit);
     } else if (!pm.isNull()) {
         // Cover the tile (crop to fill).
-        const QSizeF scaled = QSizeF(pm.size()).scaled(thumb.size(), Qt::KeepAspectRatioByExpanding);
-        const QRectF target(thumb.center().x() - scaled.width() / 2, thumb.center().y() - scaled.height() / 2,
-                            scaled.width(), scaled.height());
-        p->drawPixmap(target, pm, QRectF(pm.rect()));
+        const QPixmap cover = Thumbnailer::scaled(pm, thumb.size().toSize(), p->device()->devicePixelRatioF(),
+                                                  Qt::KeepAspectRatioByExpanding);
+        p->drawPixmap(thumb.topLeft(), cover);
     } else {
         const int s = qMin(48, int(thumb.height() / 3));
         const QColor ic = kind == EntryKind::Action ? c.textDim : c.textMuted;

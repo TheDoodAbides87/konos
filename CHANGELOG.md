@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.1 (beta) — 2026-11-08
+
+Fixes and speed-ups from an audit of the code.
+
+### Fixed
+- **Saved data can't be lost to an interrupted save.** The library (playlists,
+  pins, playback positions, podcasts, saved streams), show presets, bookmarks,
+  downloaded subtitles, album covers and caches are written to a temporary
+  file that replaces the old one only when it's complete. Before, a crash, a
+  full disk or a power cut mid-save could leave the file cut short, and Konos
+  would then start empty and save over it. A file that still can't be read is
+  now kept as `<name>.broken-<date>`, and Konos says so when it starts.
+- **Feeds that failed to load stayed on "Loading…" for good.** A channel
+  list, podcast or radio list that couldn't be reached now shows why, and is
+  tried again next time.
+- **The AppImage's Update Now checks the download** before installing it: its
+  size and SHA-256 must match what GitHub lists for the release, and it must
+  be a program. A damaged download is refused and the installed Konos is left
+  as it was.
+
+### Changed
+- **Less work while something plays.** Playback positions are saved only when
+  they've moved (not every 5 seconds while paused), and Home rebuilds only
+  when a video joins or leaves Continue Watching.
+- **Smoother scrolling in big libraries.** Covers and thumbnails are read and
+  decoded in the background instead of while the list is drawn, and each is
+  scaled once to the size it's shown.
+- **Memory stays bounded.** Thumbnails are kept up to 96 MB and radio and
+  podcast artwork up to 48 MB, rather than without limit. Feeds over 24 MB and
+  artwork over 8 MB aren't downloaded ("This link is too big to be a channel
+  list or feed").
+
 ## 0.7.0 (beta) — 2026-11-07
 
 Group E, the last group of changes from the redesign video: customizing

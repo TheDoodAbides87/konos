@@ -167,12 +167,16 @@ void NetFeeds::fetch(const QString &key)
     }
     f.loading = true;
     QNetworkReply *reply = net()->get(request(url));
+    limitSize(reply, 24 << 20); // a channel list or feed; a link to a big file stops here
     connect(reply, &QNetworkReply::finished, this, [this, reply, key, kind, url] {
         reply->deleteLater();
         Feed out;
         out.loaded = true;
         const QByteArray data = reply->readAll();
-        if (reply->error() != QNetworkReply::NoError) {
+        if (reply->property("tooBig").toBool()) {
+            out = m_feeds.value(key);
+            out.error = tr("This link is too big to be a channel list or feed.");
+        } else if (reply->error() != QNetworkReply::NoError) {
             out = m_feeds.value(key); // keep what was there
             out.error = tr("Couldn't load it (%1).").arg(reply->errorString());
         } else if (kind == "m3u") {
@@ -222,28 +226,53 @@ void NetFeeds::fetch(const QString &key)
             if (out.items.isEmpty())
                 out.error = tr("No podcasts found.");
         }
+        // Done, even when it failed (an error kept the old entry, flags and all).
+        out.loading = false;
+        out.loaded = true;
         m_feeds.insert(key, out);
         m_fetched.insert(key, QDateTime::currentDateTime());
         emit ready(key);
     });
 }
 
+void NetFeeds::limitSize(QNetworkReply *reply, qint64 bytes)
+{
+    connect(reply, &QNetworkReply::downloadProgress, reply, [reply, bytes](qint64 got, qint64 total) {
+        if (got > bytes || total > bytes) {
+            reply->setProperty("tooBig", true);
+            reply->abort();
+        }
+    });
+}
+
+void NetFeeds::cacheImage(const QString &url, const QPixmap &pm)
+{
+    if (pm.isNull()) {
+        m_imageFailed.insert(url);
+        return;
+    }
+    m_images.insert(url, new QPixmap(pm), qMax<qsizetype>(1, qsizetype(pm.width()) * pm.height() * 4 / 1024));
+}
+
 QPixmap NetFeeds::image(const QString &url)
 {
     if (url.isEmpty())
         return {};
-    if (auto it = m_images.constFind(url); it != m_images.constEnd())
-        return *it;
+    if (QPixmap *hit = m_images.object(url))
+        return *hit;
+    if (m_imageFailed.contains(url))
+        return {};
     const QString file = imageCacheFile(url);
     if (QFile::exists(file)) {
         QPixmap pm(file);
-        m_images.insert(url, pm);
+        cacheImage(url, pm);
         return pm;
     }
     if (m_imagePending.contains(url) || m_imagePending.size() > 12)
         return {};
     m_imagePending.insert(url);
     QNetworkReply *reply = net()->get(request(QUrl(url)));
+    limitSize(reply, 8 << 20); // artwork, not a film
     connect(reply, &QNetworkReply::finished, this, [this, reply, url, file] {
         reply->deleteLater();
         m_imagePending.remove(url);
@@ -260,7 +289,7 @@ QPixmap NetFeeds::image(const QString &url)
             pm = QPixmap::fromImage(img);
             img.save(file, "PNG");
         }
-        m_images.insert(url, pm); // a null one isn't asked for again this run
+        cacheImage(url, pm);
         emit imageReady(url);
     });
     return {};

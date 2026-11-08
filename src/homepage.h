@@ -34,4 +34,6 @@ private:
     QLabel *m_empty;
     QString m_filter;
     QTimer m_reload; // progress changes can move videos in or out of Continue Watching
+    QStringList continueWatching() const;
+    QStringList m_shownContinue; // what Continue Watching shows now
 };

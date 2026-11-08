@@ -1,4 +1,8 @@
 #include "updatecheck.h"
+
+#include <memory>
+
+#include <QCryptographicHash>
 #include "prefs.h"
 #include "version.h"
 
@@ -88,12 +92,24 @@ void UpdateCheck::installUpdate()
         return;
     }
     QNetworkReply *reply = m_net->get(req);
-    connect(reply, &QNetworkReply::readyRead, file, [reply, file] { file->write(reply->readAll()); });
+    // Checked before the new file replaces the old one: its size and SHA-256
+    // must match what GitHub lists for the release, and it must be a program.
+    auto hash = std::make_shared<QCryptographicHash>(QCryptographicHash::Sha256);
+    auto got = std::make_shared<qint64>(0);
+    auto head = std::make_shared<QByteArray>();
+    auto take = [file, hash, got, head](const QByteArray &data) {
+        file->write(data);
+        hash->addData(data);
+        *got += data.size();
+        if (head->size() < 4)
+            head->append(data.left(4 - head->size()));
+    };
+    connect(reply, &QNetworkReply::readyRead, file, [reply, take] { take(reply->readAll()); });
     connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 got, qint64 total) {
         if (total > 0)
             emit progress(int(got * 100 / total));
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, file, target] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, file, target, take, hash, got, head] {
         reply->deleteLater();
         file->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
@@ -101,7 +117,20 @@ void UpdateCheck::installUpdate()
             emit installed(false, tr("The download failed (%1).").arg(reply->errorString()));
             return;
         }
-        file->write(reply->readAll());
+        take(reply->readAll());
+        QString problem;
+        if (!head->startsWith("\x7f" "ELF"))
+            problem = tr("it isn't a program");
+        else if (m_appImageSize >= 0 && *got != m_appImageSize)
+            problem = tr("it's %1 bytes instead of %2").arg(*got).arg(m_appImageSize);
+        else if (!m_appImageSha256.isEmpty() && hash->result().toHex() != m_appImageSha256.toLatin1())
+            problem = tr("its checksum doesn't match the release's");
+        if (!problem.isEmpty()) {
+            file->cancelWriting();
+            emit installed(false, tr("The download was damaged (%1), so it wasn't installed. "
+                                     "Your current Konos is untouched; try again later.").arg(problem));
+            return;
+        }
         if (!file->commit()) {
             emit installed(false, tr("Couldn't replace %1.").arg(target));
             return;
@@ -157,9 +186,18 @@ void UpdateCheck::run(bool manual)
             version.remove(0, 1);
         const QString page = o.value("html_url").toString();
         m_appImageUrl.clear();
-        for (const QJsonValue &a : o.value("assets").toArray())
-            if (a.toObject().value("name").toString().endsWith("-x86_64.AppImage"))
-                m_appImageUrl = a.toObject().value("browser_download_url").toString();
+        m_appImageSize = -1;
+        m_appImageSha256.clear();
+        for (const QJsonValue &v : o.value("assets").toArray()) {
+            const QJsonObject a = v.toObject();
+            if (!a.value("name").toString().endsWith("-x86_64.AppImage"))
+                continue;
+            m_appImageUrl = a.value("browser_download_url").toString();
+            m_appImageSize = qint64(a.value("size").toDouble(-1));
+            // GitHub gives each file's checksum as "sha256:<hex>".
+            if (const QString digest = a.value("digest").toString(); digest.startsWith("sha256:"))
+                m_appImageSha256 = digest.mid(7).toLower();
+        }
         if (version.isEmpty()) {
             emit finished(false, {}, {}, tr("GitHub's answer didn't include a version."), manual);
             return;

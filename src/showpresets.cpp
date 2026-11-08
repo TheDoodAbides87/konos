@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "showpresets.h"
 #include "effects.h"
 #include "player.h"
@@ -32,10 +33,7 @@ ShowPresets::ShowPresets()
 
 void ShowPresets::load()
 {
-    QFile f(presetsFile());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject root = DataFile::readJson(presetsFile());
     const QJsonObject presets = root.value("presets").toObject();
     for (auto it = presets.begin(); it != presets.end(); ++it)
         m_presets.insert(it.key(), it.value().toObject());
@@ -79,10 +77,7 @@ void ShowPresets::save() const
     }
     const QJsonObject root{{"presets", presets}, {"folders", folders}, {"base", m_base}, {"active", m_active},
                            {"folderTracks", tracks}};
-    QDir().mkpath(QFileInfo(presetsFile()).absolutePath());
-    QFile f(presetsFile());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(root).toJson());
+    DataFile::write(presetsFile(), QJsonDocument(root).toJson());
 }
 
 QStringList ShowPresets::names() const

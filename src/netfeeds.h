@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QCache>
+
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
@@ -61,6 +63,8 @@ signals:
 
 private:
     static bool blocked(const QString &key);
+    static void limitSize(class QNetworkReply *reply, qint64 bytes); // aborts it past that
+    void cacheImage(const QString &url, const QPixmap &pm);
     NetFeeds() = default;
     QNetworkAccessManager *net();
     void fetch(const QString &key);
@@ -68,6 +72,7 @@ private:
     QNetworkAccessManager *m_net = nullptr;
     QHash<QString, Feed> m_feeds;
     QHash<QString, QDateTime> m_fetched;
-    QHash<QString, QPixmap> m_images;
+    QCache<QString, QPixmap> m_images{48 * 1024}; // KB, so a long radio session can't grow without end
+    QSet<QString> m_imageFailed;                  // not asked for again this run
     QSet<QString> m_imagePending;
 };

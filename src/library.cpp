@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "library.h"
 #include "disc.h"
 #include "musicindex.h"
@@ -13,6 +14,7 @@
 #include <QJsonObject>
 #include <QImageReader>
 #include <QProcess>
+#include <QThreadPool>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QUrl>
@@ -88,10 +90,7 @@ static QString dataFile()
 
 void Library::load()
 {
-    QFile f(dataFile());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject root = DataFile::readJson(dataFile());
     for (const auto &v : root.value("recent").toArray())
         m_recent << v.toString();
     const QJsonObject pos = root.value("positions").toObject();
@@ -179,9 +178,7 @@ void Library::save() const
     for (auto it = m_folderVisits.begin(); it != m_folderVisits.end(); ++it)
         visits.insert(it.key(), it.value());
     root.insert("folderVisits", visits);
-    QFile f(dataFile());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    DataFile::write(dataFile(), QJsonDocument(root).toJson(QJsonDocument::Compact));
 }
 
 QList<LibraryEntry> Library::listFolder(const QString &dir, int filter) const
@@ -364,6 +361,10 @@ double Library::progress(const QString &location) const
 void Library::setPosition(const QString &location, qint64 timeMs, qint64 lengthMs)
 {
     if (!prefs().flag("privacy/positions") || lengthMs <= 0)
+        return;
+    // Paused, or the same spot as last time: nothing to save or redraw.
+    if (const auto it = m_positions.constFind(location);
+        it != m_positions.cend() && qAbs(it->first - timeMs) < 1000 && it->second == lengthMs)
         return;
     m_positions.insert(location, {timeMs, lengthMs});
     scheduleSave();
@@ -549,7 +550,7 @@ Thumbnailer &Thumbnailer::instance()
 
 Thumbnailer::Thumbnailer()
 {
-    m_memory.setMaxCost(400);
+    m_memory.setMaxCost(96 * 1024); // KB: a few hundred thumbnails
     if (!QStandardPaths::findExecutable("ffmpegthumbnailer").isEmpty())
         m_tool = "ffmpegthumbnailer";
     else if (!QStandardPaths::findExecutable("ffmpeg").isEmpty())
@@ -581,73 +582,117 @@ void Thumbnailer::forget(const QString &path)
 {
     m_memory.remove(path);
     m_failed.remove(path);
+    // Loads already under way may bring the old picture: drop them all (they
+    // start again when next asked for).
+    ++m_epoch;
+    m_loading.clear();
 }
+
+namespace {
+enum LoadResult { Loaded, NoSource, Failed };
+
+// A picture at most 480 pixels across: album art is often several
+// megapixels, and the JPEG decoder can downscale while it reads.
+QImage readScaled(const QString &file)
+{
+    QImageReader reader(file);
+    reader.setAutoTransform(true);
+    const QSize full = reader.size();
+    if (full.isValid() && (full.width() > 480 || full.height() > 480))
+        reader.setScaledSize(full.scaled(480, 480, Qt::KeepAspectRatio));
+    return reader.read();
+}
+} // namespace
 
 QPixmap Thumbnailer::get(const QString &path)
 {
     if (QPixmap *pm = m_memory.object(path))
         return *pm;
-    if (m_failed.contains(path) || m_pending.contains(path))
+    if (m_failed.contains(path) || m_pending.contains(path) || m_loading.contains(path))
         return {};
-
-    const QFileInfo fi(path);
-    QString source;
-    if (fi.isDir()) {
-        // Music folders: use album art if present (also one level down for artist folders).
-        source = folderCover(path);
-        if (source.isEmpty()) {
-            const QFileInfoList subs = QDir(path).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    // What's known in memory is looked up here; the disk is the worker's job.
+    QString metaArt, trackArt;
+    if (Library::isAudioFile(path)) {
+        metaArt = library().meta(path).art;
+        if (const MusicIndex::Track *t = musicIndex().track(path))
+            trackArt = t->art;
+    }
+    m_loading.insert(path);
+    const quint64 epoch = m_epoch;
+    QThreadPool::globalInstance()->start([this, path, metaArt, trackArt, epoch] {
+        const QFileInfo fi(path);
+        QString source;
+        if (fi.isDir()) {
+            // Music folders: album art if there is some (also one level down, for artist folders).
+            source = folderCover(path);
+            const QFileInfoList subs = source.isEmpty() ? QDir(path).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)
+                                                        : QFileInfoList();
             for (int i = 0; i < qMin<qsizetype>(subs.size(), 4) && source.isEmpty(); ++i)
                 source = folderCover(subs[i].absoluteFilePath());
+        } else if (QStringList{"jpg", "jpeg", "png", "webp"}.contains(fi.suffix().toLower())) {
+            source = path; // a picture already (e.g. an artist image)
+        } else if (Library::isAudioFile(path)) {
+            source = !metaArt.isEmpty() && QFile::exists(metaArt)   ? metaArt
+                     : !trackArt.isEmpty() && QFile::exists(trackArt) ? trackArt
+                                                                      : folderCover(fi.absolutePath());
         }
-        if (source.isEmpty()) {
-            m_failed.insert(path);
-            return {};
+        QImage image;
+        int result;
+        if (!source.isEmpty()) {
+            image = readScaled(source);
+            result = image.isNull() ? Failed : Loaded;
+        } else if (fi.isDir()) {
+            result = Failed;
+        } else if (const QString cached = cacheFile(path); QFile::exists(cached)) {
+            image = QImage(cached); // an empty marker means it couldn't be made
+            result = image.isNull() ? Failed : Loaded;
+        } else {
+            result = NoSource; // make one with ffmpeg
         }
-    } else if (QStringList{"jpg", "jpeg", "png", "webp"}.contains(fi.suffix().toLower())) {
-        source = path; // a picture already (e.g. an artist image)
-    } else if (Library::isAudioFile(path)) {
-        source = library().meta(path).art;
-        if (source.isEmpty() || !QFile::exists(source)) {
-            const MusicIndex::Track *t = musicIndex().track(path);
-            source = t && QFile::exists(t->art) ? t->art : folderCover(fi.absolutePath());
-        }
-    }
-
-    if (!source.isEmpty()) {
-        // Album art is often several megapixels; let the JPEG decoder downscale.
-        QImageReader reader(source);
-        reader.setAutoTransform(true);
-        const QSize full = reader.size();
-        if (full.isValid() && (full.width() > 480 || full.height() > 480))
-            reader.setScaledSize(full.scaled(480, 480, Qt::KeepAspectRatio));
-        const QPixmap pm = QPixmap::fromImage(reader.read());
-        if (pm.isNull()) {
-            m_failed.insert(path);
-            return {};
-        }
-        m_memory.insert(path, new QPixmap(pm));
-        return pm;
-    }
-
-    const QString cached = cacheFile(path);
-    if (QFile::exists(cached)) {
-        QPixmap pm(cached);
-        if (!pm.isNull()) {
-            m_memory.insert(path, new QPixmap(pm));
-            return pm;
-        }
-        m_failed.insert(path);
-        return {};
-    }
-    if (m_tool.isEmpty() || Library::isUrl(path)) {
-        m_failed.insert(path);
-        return {};
-    }
-    m_pending.insert(path);
-    m_queue.enqueue(path);
-    pump();
+        QMetaObject::invokeMethod(this, [this, path, image, result, epoch] {
+            if (epoch == m_epoch) // not forgotten meanwhile
+                loaded(path, image, result);
+        }, Qt::QueuedConnection);
+    });
     return {};
+}
+
+void Thumbnailer::loaded(const QString &path, const QImage &image, int result)
+{
+    m_loading.remove(path);
+    if (result == Loaded) {
+        insert(path, QPixmap::fromImage(image));
+        emit ready(path);
+    } else if (result == NoSource && !m_tool.isEmpty() && !Library::isUrl(path)) {
+        m_pending.insert(path);
+        m_queue.enqueue(path);
+        pump();
+    } else {
+        m_failed.insert(path);
+    }
+}
+
+void Thumbnailer::insert(const QString &path, const QPixmap &pm)
+{
+    // Cost in KB, so the cache holds a size rather than a count.
+    m_memory.insert(path, new QPixmap(pm), qMax<qsizetype>(1, qsizetype(pm.width()) * pm.height() * 4 / 1024));
+}
+
+QPixmap Thumbnailer::scaled(const QPixmap &pm, const QSize &size, qreal dpr, Qt::AspectRatioMode mode)
+{
+    if (pm.isNull() || size.isEmpty())
+        return pm;
+    static QCache<QString, QPixmap> cache(32 * 1024); // KB
+    const QSize px = (QSizeF(size) * dpr).toSize();
+    const QString key = QStringLiteral("%1|%2x%3|%4").arg(pm.cacheKey()).arg(px.width()).arg(px.height()).arg(int(mode));
+    if (QPixmap *hit = cache.object(key))
+        return *hit;
+    QPixmap out = pm.scaled(px, mode, Qt::SmoothTransformation);
+    if (mode == Qt::KeepAspectRatioByExpanding) // crop to the middle
+        out = out.copy((out.width() - px.width()) / 2, (out.height() - px.height()) / 2, px.width(), px.height());
+    out.setDevicePixelRatio(dpr);
+    cache.insert(key, new QPixmap(out), qMax(1, out.width() * out.height() * 4 / 1024));
+    return out;
 }
 
 void Thumbnailer::pump()
@@ -685,19 +730,23 @@ void Thumbnailer::finished(const QString &path, const QString &out, bool ok)
             marker.close();
         return;
     }
-    QPixmap pm(out);
-    if (pm.isNull()) {
-        m_failed.insert(path);
-        return;
-    }
-    m_memory.insert(path, new QPixmap(pm));
-    emit ready(path);
+    m_loading.insert(path);
+    const quint64 epoch = m_epoch;
+    QThreadPool::globalInstance()->start([this, path, out, epoch] {
+        const QImage image(out);
+        QMetaObject::invokeMethod(this, [this, path, image, epoch] {
+            if (epoch == m_epoch)
+                loaded(path, image, image.isNull() ? Failed : Loaded);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void Thumbnailer::clearCache()
 {
     m_memory.clear();
     m_failed.clear();
+    ++m_epoch;
+    m_loading.clear();
     QDir dir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/thumbs");
     dir.removeRecursively();
     QDir().mkpath(dir.absolutePath());

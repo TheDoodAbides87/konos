@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "subtitlecues.h"
 
 #include <QCryptographicHash>
@@ -166,10 +167,6 @@ QString SubtitleCues::plainFile(const QString &key)
     const QString path = dir + "/" + base + ".plain.srt";
     if (QFile::exists(path))
         return path;
-    QDir().mkpath(dir);
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return {};
     auto stamp = [](qint64 ms) {
         return QString("%1:%2:%3,%4")
             .arg(ms / 3600000, 2, 10, QChar('0'))
@@ -181,8 +178,7 @@ QString SubtitleCues::plainFile(const QString &key)
     int n = 0;
     for (const Cue &c : m_cues.value(key))
         out += QString("%1\n%2 --> %3\n%4\n\n").arg(++n).arg(stamp(c.start), stamp(c.end), c.text);
-    f.write(out.toUtf8());
-    return path;
+    return DataFile::write(path, out.toUtf8()) ? path : QString();
 }
 
 QString SubtitleCues::cacheFile(const QString &video, int index) const
@@ -226,8 +222,7 @@ void SubtitleCues::extract(const QString &key)
         } else {
             m_cues.insert(key, cues);
             QDir().mkpath(QFileInfo(cached).absolutePath());
-            if (QFile f(cached); f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                f.write(out);
+            DataFile::write(cached, out);
         }
         proc->deleteLater();
         emit ready(key);

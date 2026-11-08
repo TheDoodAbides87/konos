@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "mediadialogs.h"
 #include "shortcuts.h"
+#include "datafile.h"
 #include "customizeplayer.h"
 #include "onboarding.h"
 #include "profiles.h"
@@ -203,6 +204,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         showPlayer();
     if (prefs().flag("startup/restoreSession"))
         QMetaObject::invokeMethod(this, &MainWindow::restoreSession, Qt::QueuedConnection);
+    // A data file that couldn't be read was kept aside (not overwritten): say so.
+    if (const QStringList aside = DataFile::setAside(); !aside.isEmpty())
+        QTimer::singleShot(1500, this, [this, aside] {
+            showError(tr("Some of Konos's saved data couldn't be read and was set aside, so it wasn't lost:\n%1\n"
+                         "Konos started fresh for that part.").arg(aside.join('\n')));
+        });
     // The first time Konos runs: welcome, theme, keys. Not in scripted test runs.
     if (Onboarding::wanted() && qEnvironmentVariableIsEmpty("KONOS_SCRIPT"))
         QMetaObject::invokeMethod(this, [this] { (new Onboarding(this))->open(); }, Qt::QueuedConnection);
@@ -2406,8 +2413,9 @@ void MainWindow::runDevScript()
                 NetFeeds::instance().probe(arg, [arg](const QString &kind, const QString &title) {
                     qInfo() << "probe" << arg << kind << title;
                 });
-            } else if (cmd == "selfupdate") { // selfupdate:url (download it over $APPIMAGE)
-                UpdateCheck::instance().setAppImageUrl(arg);
+            } else if (cmd == "selfupdate") { // selfupdate:url[|size|sha256] (download it over $APPIMAGE)
+                const QStringList a = arg.split('|');
+                UpdateCheck::instance().setAppImageUrl(a.value(0), a.size() > 1 ? a[1].toLongLong() : -1, a.value(2));
                 connect(&UpdateCheck::instance(), &UpdateCheck::installed, this,
                         [](bool ok, const QString &e) { qInfo() << "installed" << ok << e; });
                 UpdateCheck::instance().installUpdate();

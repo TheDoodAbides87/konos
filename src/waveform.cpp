@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "waveform.h"
 #include "library.h"
 
@@ -220,9 +221,7 @@ void Waveform::finish(bool ok)
             out[i] = std::pow(qMin(1.0f, out[i] / top), 0.75f);
             data[i] = char(quint8(std::lround(out[i] * 255)));
         }
-        QFile f(cacheFile(job->path));
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            f.write(data);
+        DataFile::write(cacheFile(job->path), data);
         // Detailed outline: 10 ms buckets folded to kDetailRate per second, same scaling.
         const size_t per = size_t(100 / kDetailRate);
         QByteArray hi(int((b.size() + per - 1) / per), 0);
@@ -232,9 +231,7 @@ void Waveform::finish(bool ok)
                 v = qMax(v, b[j]);
             hi[i] = char(quint8(std::lround(std::pow(qMin(1.0f, v / top), 0.75f) * 255)));
         }
-        QFile hf(cacheFile(job->path, ".hi"));
-        if (hf.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            hf.write(hi);
+        DataFile::write(cacheFile(job->path, ".hi"), hi);
         if (m_detailPath == job->path)
             m_detailPath.clear();
         m_memory.insert(job->path, new QVector<float>(out));

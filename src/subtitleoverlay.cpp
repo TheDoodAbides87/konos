@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "subtitleoverlay.h"
 #include "filedialogs.h"
 #include "library.h"
@@ -648,8 +649,7 @@ bool SubtitleOverlay::save(Row &row, const QByteArray &data, const QString &file
     }
     const QString target = dir + "/" + name;
     if (QFileInfo(row.subtitle).absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
-        QFile out(target);
-        if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(data) != data.size()) {
+        if (!DataFile::write(target, data)) {
             row.state = Row::Failed;
             row.note = tr("Couldn't save %1").arg(target);
             return false;

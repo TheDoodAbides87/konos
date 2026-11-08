@@ -1,3 +1,4 @@
+#include "datafile.h"
 #include "playerpanel.h"
 #include "libraryview.h"
 #include "player.h"
@@ -133,10 +134,7 @@ Bookmarks &Bookmarks::instance()
 
 Bookmarks::Bookmarks()
 {
-    QFile f(bookmarksFile());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject root = DataFile::readJson(bookmarksFile());
     for (auto it = root.begin(); it != root.end(); ++it) {
         QList<Mark> marks;
         for (const QJsonValue &v : it.value().toArray()) {
@@ -172,10 +170,7 @@ void Bookmarks::save() const
             arr.append(QJsonObject{{"name", m.name}, {"ms", double(m.ms)}});
         root.insert(it.key(), arr);
     }
-    QDir().mkpath(QFileInfo(bookmarksFile()).absolutePath());
-    QFile f(bookmarksFile());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    DataFile::write(bookmarksFile(), QJsonDocument(root).toJson(QJsonDocument::Compact));
 }
 
 // ---------------------------------------------------------------------------

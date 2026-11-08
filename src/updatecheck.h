@@ -29,7 +29,13 @@ public:
     static bool canSelfUpdate();
     QString appImageUrl() const { return m_appImageUrl; } // of the latest release, once checked
     void installUpdate(); // progress() and installed() follow
-    void setAppImageUrl(const QString &url) { m_appImageUrl = url; } // tests
+    // Tests. size < 0 / an empty digest: not checked.
+    void setAppImageUrl(const QString &url, qint64 size = -1, const QString &sha256 = {})
+    {
+        m_appImageUrl = url;
+        m_appImageSize = size;
+        m_appImageSha256 = sha256;
+    }
 
 signals:
     // newer: a newer release exists (version like "0.5.0-beta", page = its web page).
@@ -44,4 +50,6 @@ private:
     QNetworkAccessManager *m_net = nullptr;
     bool m_running = false;
     QString m_appImageUrl;
+    qint64 m_appImageSize = -1; // from GitHub, to check the download against
+    QString m_appImageSha256;   // hex
 };
