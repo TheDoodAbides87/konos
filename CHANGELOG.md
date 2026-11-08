@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.5 (beta) — 2026-11-08
+
+### Added
+- **Edit Metadata: put files in the right places.** Drag a song's row onto
+  another to move its file there; the numbers, titles and artists stay put,
+  so files whose tags got mixed up can be lined up with the right titles
+  before saving. **Order Files by Name** does it in one click for files
+  named 01, 02, … The File column is wider.
+
+### Fixed
+- Edit Metadata saves each place's tags to the file now in it (it used to
+  go by the files' original order).
+
 ## 0.7.4 (beta) — 2026-11-08
 
 ### Added
