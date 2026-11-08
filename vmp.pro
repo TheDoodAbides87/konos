@@ -28,6 +28,8 @@ SOURCES += \
     src/netfeeds.cpp \
     src/librarydialogs.cpp \
     src/miniplayer.cpp \
+    src/shortcuts.cpp \
+    src/mediadialogs.cpp \
     src/showpresets.cpp \
     src/subtitlecues.cpp \
     src/subtitletimeline.cpp \
@@ -66,6 +68,8 @@ HEADERS += \
     src/netfeeds.h \
     src/librarydialogs.h \
     src/miniplayer.h \
+    src/shortcuts.h \
+    src/mediadialogs.h \
     src/showpresets.h \
     src/subtitlecues.h \
     src/subtitletimeline.h \

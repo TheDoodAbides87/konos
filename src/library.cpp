@@ -189,7 +189,9 @@ QList<LibraryEntry> Library::listFolder(const QString &dir, int filter) const
     QList<LibraryEntry> out;
     QDir d(dir);
     const QFileInfoList infos =
-        d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Readable, QDir::DirsFirst);
+        d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Readable |
+                            (prefs().flag("library/showHidden") ? QDir::Hidden : QDir::Filters()),
+                        QDir::DirsFirst);
     for (const QFileInfo &fi : infos) {
         LibraryEntry e;
         e.path = fi.absoluteFilePath();

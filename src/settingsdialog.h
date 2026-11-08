@@ -23,6 +23,7 @@ public:
 signals:
     void openUrlRequested(const QString &url);
     void recordToggled();
+    void shortcutsRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;

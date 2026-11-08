@@ -70,8 +70,17 @@ private:
     void updateQueueViews();
     void updateTitle();
 
+    void openFile();
     void openFiles();
     void openFolder();
+    void openCapture();
+    void openClipboard();
+    void savePlaylistFile();
+    bool writePlaylist(const QString &path); // the queue, as .m3u8 or .xspf
+    void openConvert(const QStringList &files);
+    void openStream(bool cast = false);
+    void showShortcuts();
+    void addOpenEntries(QMenu *menu);
     void openNetwork();
     void openDisc();
     void playDisc(const Disc::Drive &drive);
@@ -83,7 +92,8 @@ private:
     void showError(const QString &message);
     void updateScreensaverInhibit();
 
-    QMenu *buildMainMenu();
+    QMenu *buildMainMenu();    // the title bar menu
+    QMenu *buildContextMenu(); // right-click on the video
 #ifdef VMP_DEVHOOKS
     void runDevScript();
 #endif
@@ -151,4 +161,6 @@ private:
     QAction *m_actPlay, *m_actStop, *m_actPrev, *m_actNext, *m_actRecord, *m_actHideUi, *m_actQuit;
     QAction *m_actFullscreen, *m_actSnapshot, *m_actMute, *m_actOpen, *m_actOpenNet, *m_actSettings;
     QAction *m_actSidebar, *m_actLibrary, *m_actDisc, *m_actMenuEnter;
+    QAction *m_actOpenMany, *m_actOpenDir, *m_actCapture, *m_actClipboard, *m_actSavePlaylist, *m_actConvert,
+        *m_actStream, *m_actShortcuts, *m_actAbout;
 };

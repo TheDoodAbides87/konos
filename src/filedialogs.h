@@ -13,6 +13,6 @@ namespace FileDialogs {
 QStringList openFiles(QWidget *parent, const QString &title, const QString &dir, const QString &filter);
 QString openFile(QWidget *parent, const QString &title, const QString &dir, const QString &filter);
 QString existingDirectory(QWidget *parent, const QString &title, const QString &dir = {});
-QString saveFile(QWidget *parent, const QString &title, const QString &path);
+QString saveFile(QWidget *parent, const QString &title, const QString &path, const QString &filter = QString());
 
 } // namespace FileDialogs

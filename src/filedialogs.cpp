@@ -147,9 +147,9 @@ QString existingDirectory(QWidget *parent, const QString &title, const QString &
     return run(d) ? d.selectedFiles().value(0) : QString();
 }
 
-QString saveFile(QWidget *parent, const QString &title, const QString &path)
+QString saveFile(QWidget *parent, const QString &title, const QString &path, const QString &filter)
 {
-    QFileDialog d(parent, title, path);
+    QFileDialog d(parent, title, path, filter);
     d.setAcceptMode(QFileDialog::AcceptSave);
     prepare(d);
     return run(d) ? d.selectedFiles().value(0) : QString();

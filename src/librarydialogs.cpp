@@ -230,6 +230,13 @@ NetworkStreamOverlay::NetworkStreamOverlay(QWidget *window, OpenFn open, BrowseF
     m_urls->setFocus();
 }
 
+void NetworkStreamOverlay::setUrls(const QStringList &urls)
+{
+    m_urls->setPlainText(urls.join('\n'));
+    m_status->setText(tr("From the clipboard. Check the addresses, then play them."));
+    m_play->setFocus();
+}
+
 void NetworkStreamOverlay::go(bool play)
 {
     QStringList urls;
@@ -512,10 +519,19 @@ bool FolderTracksOverlay::candidate(const QString &file) const
 
 bool FolderTracksOverlay::autodetected(const QString &video, const QString &file) const
 {
-    // VLC adds subtitle files next to the video whose name starts with the video's.
+    // What VLC adds on its own, by Settings → Subtitles → "Load subtitle files
+    // automatically" (only files next to the video are counted here).
     const QFileInfo v(video), f(file);
-    return m_subtitles && v.absolutePath() == f.absolutePath() &&
-           f.completeBaseName().startsWith(v.completeBaseName(), Qt::CaseInsensitive);
+    if (!m_subtitles || v.absolutePath() != f.absolutePath())
+        return false;
+    const QString name = f.completeBaseName(), base = v.completeBaseName();
+    switch (prefs().integer("subs/fuzzy")) {
+    case 1: return true;
+    case 2: return name.contains(base, Qt::CaseInsensitive);
+    case 3: return name.startsWith(base, Qt::CaseInsensitive);
+    case 4: return name.compare(base, Qt::CaseInsensitive) == 0;
+    default: return false;
+    }
 }
 
 void FolderTracksOverlay::setFile(QTreeWidgetItem *item, const QString &file)

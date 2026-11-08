@@ -2,6 +2,7 @@
 
 #include "effects.h"
 
+#include <QHash>
 #include <QImage>
 #include <QMutex>
 #include <QObject>
@@ -18,6 +19,7 @@ struct libvlc_instance_t;
 struct libvlc_media_player_t;
 struct libvlc_media_t;
 struct libvlc_event_t;
+struct libvlc_renderer_item_t;
 
 // Wraps a libVLC instance + media player. Video is rendered into memory
 // (vmem callbacks) and painted by VideoWidget, which keeps the UI fully custom
@@ -147,6 +149,14 @@ public:
     // Recreates the libVLC instance (for instance-wide options such as caching).
     void reinitialize();
 
+    // Casting: play on a renderer (a Chromecast) found by a discoverer on
+    // instance(); nullptr plays here again. The item restarts where it was.
+    libvlc_instance_t *instance() const { return m_vlc; }
+    void setRenderer(libvlc_renderer_item_t *item);
+    QString renderer() const { return m_rendererName; } // empty when playing here
+    // Extra VLC options for one location (capture devices), used whenever it opens.
+    void setMediaOptions(const QString &location, const QStringList &options) { m_mediaOptions[location] = options; }
+
     // The latest decoded picture: I420 planes at the decoded size. The display
     // size has the sample aspect ratio applied; the GPU scales between them.
     struct Frame {
@@ -193,6 +203,7 @@ public:
 
 signals:
     void frameReady();
+    void rendererChanged(const QString &name);
     void stateChanged(Player::State state);
     void timeChanged(qint64 ms);
     void lengthChanged(qint64 ms);
@@ -258,6 +269,9 @@ private:
     QString m_visualizer;
     bool m_visualActive = false; // the current item shows m_visualizer
     QStringList m_slaves;
+    libvlc_renderer_item_t *m_renderer = nullptr;
+    QString m_rendererName;
+    QHash<QString, QStringList> m_mediaOptions;
     bool m_recording = false;
     bool m_hwDecode = false;       // the current media decodes on the GPU
     bool m_forceSoftware = false;  // this item needs overlays, which can't be drawn on GPU frames

@@ -134,7 +134,28 @@ QStringList Player::instanceArgs() const
     };
     if (prefs().flag("performance/fastSeek"))
         args << "--input-fast-seek";
-    args << (prefs().flag("subs/autoload") ? "--sub-autodetect-file" : "--no-sub-autodetect-file");
+    if (const int fuzzy = qBound(0, prefs().integer("subs/fuzzy"), 4); fuzzy == 0)
+        args << "--no-sub-autodetect-file";
+    else
+        args << "--sub-autodetect-file" << QString("--sub-autodetect-fuzzy=%1").arg(fuzzy);
+    if (const QString enc = prefs().string("subs/encoding"); !enc.isEmpty())
+        args << "--subsdec-encoding=" + enc;
+    if (const QString paths = prefs().string("subs/paths").trimmed(); !paths.isEmpty())
+        args << "--sub-autodetect-path=" + paths;
+    if (!prefs().flag("video/dropLate"))
+        args << "--no-drop-late-frames" << "--no-skip-frames";
+    if (!prefs().flag("audio/timeStretch"))
+        args << "--no-audio-time-stretch";
+    if (const QString rg = prefs().string("audio/replayGain"); rg == "track" || rg == "album")
+        args << "--audio-replay-gain-mode=" + rg;
+    if (const QString aout = prefs().string("audio/output"); !aout.isEmpty())
+        args << "--aout=" + aout;
+    if (prefs().flag("network/reconnect"))
+        args << "--http-reconnect";
+    if (const int threads = prefs().integer("performance/threads"); threads > 0)
+        args << QString("--avcodec-threads=%1").arg(threads);
+    if (prefs().flag("performance/fastDecode"))
+        args << "--avcodec-fast";
     const QString lang = prefs().string("subs/language").trimmed();
     if (!lang.isEmpty())
         args << "--sub-language=" + lang;
@@ -148,6 +169,11 @@ QStringList Player::instanceArgs() const
 
 void Player::createInstance()
 {
+    // VLC 3's HTTP access reads the proxy from the environment, like curl.
+    static const QByteArray envHttp = qgetenv("http_proxy"), envHttps = qgetenv("https_proxy");
+    const QByteArray proxy = prefs().string("network/proxy").trimmed().toUtf8();
+    qputenv("http_proxy", proxy.isEmpty() ? envHttp : proxy);
+    qputenv("https_proxy", proxy.isEmpty() ? envHttps : proxy);
     const QStringList args = instanceArgs();
     QList<QByteArray> storage;
     std::vector<const char *> argv;
@@ -159,6 +185,7 @@ void Player::createInstance()
     m_vlc = libvlc_new(int(argv.size()), argv.data());
     if (!m_vlc) {
         // Retry without user-supplied arguments in case they were invalid.
+        qWarning("libVLC refused these options, starting without them: %s", qPrintable(args.join(' ')));
         m_vlc = libvlc_new(0, nullptr);
     }
     if (!m_vlc) {
@@ -206,6 +233,11 @@ void Player::createInstance()
 
 void Player::destroyInstance()
 {
+    if (m_renderer) { // it belongs to this instance
+        libvlc_renderer_item_release(m_renderer);
+        m_renderer = nullptr;
+        m_rendererName.clear();
+    }
     if (m_mp) {
         libvlc_media_player_stop(m_mp);
         libvlc_media_player_release(m_mp);
@@ -453,6 +485,8 @@ void Player::open(const QString &location, qint64 startMs, bool startPaused)
         emit errorOccurred(tr("Could not open “%1”.").arg(location));
         return;
     }
+    for (const QString &o : m_mediaOptions.value(location))
+        libvlc_media_add_option(m_media, o.toUtf8().constData());
 
     // With memory output, VLC's automatic choice ("any") ends up refusing VA-API;
     // naming the DRM variant decodes on the GPU and copies frames back. Where
@@ -548,6 +582,19 @@ void Player::checkOverlayDecoding()
     // Reopen in place with software decoding.
     m_forceSoftware = true;
     QTimer::singleShot(0, this, &Player::restart);
+}
+
+void Player::setRenderer(libvlc_renderer_item_t *item)
+{
+    if (!m_mp || item == m_renderer)
+        return;
+    if (m_renderer)
+        libvlc_renderer_item_release(m_renderer);
+    m_renderer = item ? libvlc_renderer_item_hold(item) : nullptr;
+    m_rendererName = item ? QString::fromUtf8(libvlc_renderer_item_name(item)) : QString();
+    libvlc_media_player_set_renderer(m_mp, m_renderer);
+    restart();
+    emit rendererChanged(m_rendererName);
 }
 
 void Player::restart()

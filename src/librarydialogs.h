@@ -37,6 +37,7 @@ public:
     using OpenFn = std::function<void(const QStringList &urls, bool play)>;
     using BrowseFn = std::function<void(const QString &kind, const QString &url)>; // "channels" / "podcast"
     NetworkStreamOverlay(QWidget *window, OpenFn open, BrowseFn browse);
+    void setUrls(const QStringList &urls);
 
 private:
     void go(bool play);

@@ -1,4 +1,5 @@
 #include "netfeeds.h"
+#include "prefs.h"
 #include "updatecheck.h"
 
 #include <QCryptographicHash>
@@ -98,8 +99,20 @@ QNetworkAccessManager *NetFeeds::net()
     return m_net;
 }
 
+// Radio and podcast search ask outside directories; Settings → Privacy can turn that off.
+bool NetFeeds::blocked(const QString &key)
+{
+    return (key.startsWith("radio:") || key.startsWith("podcasts:")) && !prefs().flag("network/directories");
+}
+
 NetFeeds::Feed NetFeeds::feed(const QString &key)
 {
+    if (blocked(key)) {
+        Feed off;
+        off.loaded = true;
+        off.error = tr("Radio and podcast directories are turned off in Settings → Privacy → Advanced Options.");
+        return off;
+    }
     Feed &f = m_feeds[key];
     const QDateTime when = m_fetched.value(key);
     if (!f.loading && (!f.loaded || when.secsTo(QDateTime::currentDateTime()) > 3600))
@@ -118,6 +131,8 @@ void NetFeeds::fetch(const QString &key)
     QUrl url;
     const QString kind = key.section(':', 0, 0);
     const QString rest = key.section(':', 1);
+    if (blocked(key))
+        return;
     if (kind == "m3u" || kind == "rss") {
         url = QUrl(rest);
     } else if (kind == "radio") {

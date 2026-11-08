@@ -44,6 +44,7 @@ signals:
     void contextMenuRequested(const QPoint &globalPos);
     void mouseMoved(const QPoint &pos);
     void wheelScrolled(int delta);
+    void wheelScrolledSideways(int delta); // positive: to the right
 
 protected:
     void initializeGL() override;

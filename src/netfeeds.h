@@ -60,6 +60,7 @@ signals:
     void imageReady(const QString &url);
 
 private:
+    static bool blocked(const QString &key);
     NetFeeds() = default;
     QNetworkAccessManager *net();
     void fetch(const QString &key);

@@ -1124,7 +1124,7 @@ LibraryView::LibraryView(Mode mode, QWidget *parent) : QWidget(parent), m_mode(m
     connect(&prefs(), &Prefs::changed, this, [this](const QString &key) {
         if (key == "ui/thumbSize")
             updateGrid();
-        if (key.startsWith("library/") ||
+        if (key.startsWith("library/") || (key == "network/directories" && m_loc.section == Section::Network) ||
             ((key == "music/artistMode" || key == "music/artistArt") && m_loc.music == "artists"))
             reload();
         if (key == "music/artistArt")

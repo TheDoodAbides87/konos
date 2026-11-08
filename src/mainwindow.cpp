@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "mediadialogs.h"
+#include "shortcuts.h"
 #include "mediainfocard.h"
 #include "showpresets.h"
 #include "subtitletimeline.h"
@@ -9,6 +11,7 @@
 #include "librarydialogs.h"
 #include "miniplayer.h"
 #include "netfeeds.h"
+#include "durations.h"
 #include <QAbstractItemView>
 #include <QListView>
 #include <QListWidget>
@@ -30,6 +33,11 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QClipboard>
+#include <QElapsedTimer>
+#include <QSaveFile>
+#include <QTextStream>
+#include <QUrl>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDBusInterface>
@@ -115,11 +123,19 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     m_reinitTimer.setInterval(500);
     connect(&m_reinitTimer, &QTimer::timeout, this, [this] { m_player->reinitialize(); });
     connect(&prefs(), &Prefs::changed, this, [this](const QString &key) {
-        static const QStringList engineKeys = {"network/caching", "performance/fileCaching", "performance/skipLoop",
-                                               "performance/fastSeek", "subs/autoload", "subs/language",
-                                               "privacy/metaNetwork", "advanced/args"};
+        static const QStringList engineKeys = {
+            "network/caching", "performance/fileCaching", "performance/skipLoop", "performance/fastSeek",
+            "subs/fuzzy", "subs/language", "subs/encoding", "subs/paths", "privacy/metaNetwork", "advanced/args",
+            "video/dropLate", "audio/timeStretch", "audio/replayGain", "audio/output", "network/proxy",
+            "network/reconnect", "performance/threads", "performance/fastDecode"};
         if (engineKeys.contains(key))
             m_reinitTimer.start();
+        if (key == "ui/libraryQueue" && m_libraryQueue != prefs().flag(key)) {
+            m_libraryQueue = prefs().flag(key);
+            updateLayout();
+        }
+        if (key == "ui/miniPlayer")
+            updateLayout();
         if (key == "video/hw" && m_player->hasMedia())
             m_player->restart();
         if (key == "video/aspect")
@@ -540,10 +556,24 @@ void MainWindow::buildUi()
         playItems({url}, 0);
     });
     connect(m_settings, &SettingsOverlay::recordToggled, this, &MainWindow::toggleRecording);
+    connect(m_settings, &SettingsOverlay::shortcutsRequested, this, [this] {
+        m_settings->close();
+        showShortcuts();
+    });
 
     connect(m_video, &VideoWidget::doubleClicked, this, [this] {
-        if (m_view == View::Player)
+        if (m_view != View::Player)
+            return;
+        switch (prefs().integer("controls/doubleClick")) {
+        case 0:
             m_pip ? setPip(false) : setFullscreen(!m_fullscreen);
+            break;
+        case 1:
+            m_player->togglePause();
+            break;
+        default:
+            break;
+        }
     });
     connect(m_video, &VideoWidget::clicked, this, [this](const QPoint &pos) {
         if (m_view != View::Player) { // the mini player
@@ -559,7 +589,7 @@ void MainWindow::buildUi()
             m_player->togglePause();
     });
     connect(m_video, &VideoWidget::contextMenuRequested, this, [this](const QPoint &pos) {
-        QMenu *menu = buildMainMenu();
+        QMenu *menu = buildContextMenu();
         menu->exec(pos);
         menu->deleteLater();
     });
@@ -579,45 +609,63 @@ void MainWindow::buildUi()
         else if (mode == 1)
             m_player->seekRelative(dir * prefs().integer("controls/seekStep") * 1000);
     });
+    connect(m_video, &VideoWidget::wheelScrolledSideways, this, [this](int delta) {
+        const int mode = prefs().integer("controls/hwheel");
+        const int dir = delta > 0 ? 1 : (delta < 0 ? -1 : 0);
+        if (mode == 0)
+            m_player->seekRelative(dir * prefs().integer("controls/seekStep") * 1000);
+        else if (mode == 1)
+            m_player->setVolume(m_player->volume() + dir * prefs().integer("controls/volumeStep"));
+    });
 }
 
 void MainWindow::createActions()
 {
-    auto make = [this](const QString &icon, const QString &text, const QKeySequence &key, auto slot) {
+    // Every shortcut has an id in Shortcuts, which supplies the keys (the
+    // user's choice, or the default) and keeps them up to date.
+    auto make = [this](const QString &icon, const QString &text, const QString &id, auto slot) {
         auto *a = new QAction(theme().icon(icon, theme().accent()), text, this);
         a->setProperty("iconName", icon);
-        if (!key.isEmpty())
-            a->setShortcut(key);
+        Shortcuts::instance().bind(a, id);
         a->setShortcutContext(Qt::WindowShortcut);
         connect(a, &QAction::triggered, this, slot);
         addAction(a);
         return a;
     };
-    m_actPlay = make("play", tr("Play"), Qt::Key_Space, [this] { m_queue.isEmpty() && !m_player->hasMedia() ? openFiles() : m_player->togglePause(); });
-    m_actStop = make("stop", tr("Stop"), Qt::Key_S, [this] {
+    m_actPlay = make("play", tr("Play"), "play", [this] { m_queue.isEmpty() && !m_player->hasMedia() ? openFiles() : m_player->togglePause(); });
+    m_actStop = make("stop", tr("Stop"), "stop", [this] {
         savePosition();
         m_player->stop();
     });
-    m_actPrev = make("prev", tr("Previous Item"), Qt::Key_P, [this] { previous(); });
-    m_actNext = make("next", tr("Next Item"), Qt::Key_N, [this] { next(true); });
-    m_actRecord = make("record", tr("Record"), Qt::Key_R, [this] { toggleRecording(); });
-    m_actHideUi = make("hide-ui", tr("Hide UI"), QKeySequence("Ctrl+\\"), [this] { setHideUi(!m_hideUi); });
-    m_actQuit = make("quit", tr("Quit VMP"), QKeySequence("Ctrl+Q"), [this] { close(); });
-    m_actFullscreen = make("fullscreen", tr("Fullscreen"), Qt::Key_F, [this] { setFullscreen(!m_fullscreen); });
-    m_actSnapshot = make("camera", tr("Take Snapshot"), QKeySequence("Shift+S"), [this] { takeSnapshot(); });
-    m_actMute = make("mute", tr("Mute"), Qt::Key_M, [this] {
+    m_actPrev = make("prev", tr("Previous Item"), "prev", [this] { previous(); });
+    m_actNext = make("next", tr("Next Item"), "next", [this] { next(true); });
+    m_actRecord = make("record", tr("Record"), "record", [this] { toggleRecording(); });
+    m_actHideUi = make("hide-ui", tr("Hide UI"), "hideUi", [this] { setHideUi(!m_hideUi); });
+    m_actQuit = make("quit", tr("Quit VMP"), "quit", [this] { close(); });
+    m_actFullscreen = make("fullscreen", tr("Fullscreen"), "fullscreen", [this] { setFullscreen(!m_fullscreen); });
+    m_actSnapshot = make("camera", tr("Take Snapshot"), "snapshot", [this] { takeSnapshot(); });
+    m_actMute = make("mute", tr("Mute"), "mute", [this] {
         m_player->setMuted(!m_player->isMuted());
         m_toast->show(m_player->isMuted() ? tr("Muted") : tr("Sound on"), {}, {}, 1200);
     });
-    m_actOpen = make("open-media", tr("Open File…"), QKeySequence("Ctrl+O"), [this] { openFiles(); });
-    m_actOpenNet = make("globe", tr("Open Network Stream…"), QKeySequence("Ctrl+N"), [this] { openNetwork(); });
-    m_actDisc = make("disc", tr("Play Disc"), QKeySequence("Ctrl+D"), [this] { openDisc(); });
-    m_actSettings = make("settings", tr("Settings…"), QKeySequence("Ctrl+P"), [this] { m_settings->open(); });
-    m_actSidebar = make("sidebar", tr("Toggle Sidebar"), QKeySequence("Ctrl+B"), [this] {
+    m_actOpen = make("open-media", tr("Open File…"), "open", [this] { openFile(); });
+    m_actOpenMany = make("files", tr("Open Multiple Files…"), "openMany", [this] { openFiles(); });
+    m_actOpenDir = make("folder", tr("Open Directory…"), "openDir", [this] { openFolder(); });
+    m_actOpenNet = make("stream", tr("Open Network Stream…"), "network", [this] { openNetwork(); });
+    m_actDisc = make("disc", tr("Open Disc"), "disc", [this] { openDisc(); });
+    m_actCapture = make("capture", tr("Open Capture Device…"), "capture", [this] { openCapture(); });
+    m_actClipboard = make("link", tr("Open Location from Clipboard"), "clipboard", [this] { openClipboard(); });
+    m_actSavePlaylist = make("save-down", tr("Save Playlist to File…"), "savePlaylist", [this] { savePlaylistFile(); });
+    m_actConvert = make("convert", tr("Convert / Save…"), "convert", [this] { openConvert({}); });
+    m_actStream = make("upload", tr("Stream…"), "stream", [this] { openStream(); });
+    m_actShortcuts = make("keyboard", tr("Keyboard Shortcuts"), "shortcuts", [this] { showShortcuts(); });
+    m_actAbout = make("info", tr("About VMP"), "about", [this] { (new AboutOverlay(this))->open(); });
+    m_actSettings = make("settings", tr("Settings"), "settings", [this] { m_settings->open(); });
+    m_actSidebar = make("sidebar", tr("Toggle Sidebar"), "sidebar", [this] {
         if (m_view == View::Player)
             toggleSidebar();
     });
-    m_actLibrary = make("videos", tr("Library / Player"), QKeySequence("Ctrl+L"), [this] {
+    m_actLibrary = make("videos", tr("Library / Player"), "library", [this] {
         if (m_view == View::Library)
             showPlayer();
         else
@@ -625,21 +673,20 @@ void MainWindow::createActions()
     });
 
     // Shortcuts without a menu entry.
-    auto key = [this](const QKeySequence &seq, auto slot) {
+    auto key = [this](const QString &id, auto slot) {
         auto *a = new QAction(this);
-        a->setShortcut(seq);
+        Shortcuts::instance().bind(a, id);
         a->setShortcutContext(Qt::WindowShortcut);
         connect(a, &QAction::triggered, this, slot);
         addAction(a);
     };
-    key(Qt::Key_F11, [this] { setFullscreen(!m_fullscreen); });
-    key(QKeySequence("Ctrl+Shift+B"), [this] {
+    key("bookmark", [this] {
         if (!m_player->hasMedia())
             return;
         m_panel->addBookmark();
         m_toast->show(tr("Bookmark added"), {}, {}, 1500);
     });
-    key(Qt::Key_Escape, [this] {
+    key("escape", [this] {
         if (m_quick->isVisible())
             m_quick->hide();
         else if (m_fullscreen)
@@ -659,16 +706,16 @@ void MainWindow::createActions()
                                                                                : tr("%1 s").arg(qAbs(seconds));
         m_toast->show(seconds > 0 ? tr("Forward %1").arg(amount) : tr("Back %1").arg(amount), {}, {}, 900);
     };
-    key(Qt::Key_Right, [this, seekBy] {
+    key("seekFwd", [this, seekBy] {
         m_player->inDiscMenu() ? m_player->navigate(Player::Nav::Right) : seekBy(prefs().integer("controls/seekStep"));
     });
-    key(Qt::Key_Left, [this, seekBy] {
+    key("seekBack", [this, seekBy] {
         m_player->inDiscMenu() ? m_player->navigate(Player::Nav::Left) : seekBy(-prefs().integer("controls/seekStep"));
     });
-    key(QKeySequence("Ctrl+Right"), [seekBy] { seekBy(60); });
-    key(QKeySequence("Ctrl+Left"), [seekBy] { seekBy(-60); });
+    key("jumpFwd", [seekBy] { seekBy(60); });
+    key("jumpBack", [seekBy] { seekBy(-60); });
     // VLC's keys for cycling the aspect ratio, subtitle track and audio track.
-    key(Qt::Key_A, [this] {
+    key("aspect", [this] {
         const QStringList ratios = VideoWidget::aspectRatios();
         const QString next = ratios.value((ratios.indexOf(prefs().string("video/aspect")) + 1) % ratios.size());
         prefs().set("video/aspect", next);
@@ -690,13 +737,13 @@ void MainWindow::createActions()
         const QString name = next.id < 0 ? tr("Off") : next.name;
         m_toast->show(subtitles ? tr("Subtitles: %1").arg(name) : tr("Audio: %1").arg(name), {}, {}, 1600);
     };
-    key(Qt::Key_V, [cycleTrack] { cycleTrack(true); });
-    key(Qt::Key_B, [cycleTrack] { cycleTrack(false); });
-    key(Qt::Key_Up, [this] {
+    key("subTrack", [cycleTrack] { cycleTrack(true); });
+    key("audioTrack", [cycleTrack] { cycleTrack(false); });
+    key("volUp", [this] {
         m_player->inDiscMenu() ? m_player->navigate(Player::Nav::Up)
                                : m_player->setVolume(m_player->volume() + prefs().integer("controls/volumeStep"));
     });
-    key(Qt::Key_Down, [this] {
+    key("volDown", [this] {
         m_player->inDiscMenu() ? m_player->navigate(Player::Nav::Down)
                                : m_player->setVolume(m_player->volume() - prefs().integer("controls/volumeStep"));
     });
@@ -707,9 +754,9 @@ void MainWindow::createActions()
     m_actMenuEnter->setEnabled(false);
     connect(m_actMenuEnter, &QAction::triggered, this, [this] { m_player->navigate(Player::Nav::Activate); });
     addAction(m_actMenuEnter);
-    key(Qt::Key_BracketRight, [this] { m_player->setRate(m_player->rate() + 0.1f); m_toast->show(tr("Speed %1×").arg(m_player->rate(), 0, 'f', 2), {}, {}, 1200); });
-    key(Qt::Key_BracketLeft, [this] { m_player->setRate(m_player->rate() - 0.1f); m_toast->show(tr("Speed %1×").arg(m_player->rate(), 0, 'f', 2), {}, {}, 1200); });
-    key(Qt::Key_Equal, [this] { m_player->setRate(1.0f); m_toast->show(tr("Normal speed"), {}, {}, 1200); });
+    key("faster", [this] { m_player->setRate(m_player->rate() + 0.1f); m_toast->show(tr("Speed %1×").arg(m_player->rate(), 0, 'f', 2), {}, {}, 1200); });
+    key("slower", [this] { m_player->setRate(m_player->rate() - 0.1f); m_toast->show(tr("Speed %1×").arg(m_player->rate(), 0, 'f', 2), {}, {}, 1200); });
+    key("normalSpeed", [this] { m_player->setRate(1.0f); m_toast->show(tr("Normal speed"), {}, {}, 1200); });
 }
 
 void MainWindow::applyTheme()
@@ -1250,8 +1297,9 @@ void MainWindow::playIndex(int index)
     const int mode = prefs().integer("playback/resume");
     const bool canResume = resume > 5000 && progress < 0.95 && prefs().flag("privacy/positions") &&
                            !Disc::isDiscLocation(m_current);
+    const qint64 rewound = qMax<qint64>(0, resume - prefs().integer("playback/resumeRewind") * 1000);
     if (canResume && mode == 0)
-        start = resume;
+        start = rewound;
     ShowPresets::instance().beforeOpen(m_current); // the show's subtitle look applies as it opens
     m_defaultsFor.clear();
     m_player->open(m_current, start);
@@ -1268,7 +1316,7 @@ void MainWindow::playIndex(int index)
                         [this] { m_player->seek(0); }, 5000);
     } else if (canResume && mode == 1) {
         m_toast->showAt(Toast::Bottom, tr("Continue from %1?").arg(formatTime(resume)), tr("Resume"),
-                        [this, resume] { m_player->seek(resume); }, 8000);
+                        [this, rewound] { m_player->seek(rewound); }, 8000);
     }
     if (m_sleepAtEnd)
         m_toast->show(tr("Sleep timer: will pause at the end of this item"), {}, {}, 2500);
@@ -1349,6 +1397,9 @@ void MainWindow::savePosition()
         return;
     const qint64 len = m_player->length();
     const qint64 t = m_player->time();
+    // Short items (songs, say) can be left out: they start from the beginning.
+    if (len > 0 && len < qint64(prefs().integer("playback/minResume")) * 60000)
+        return;
     if (len > 0 && t > 0 && m_player->state() != Player::Ended)
         library().setPosition(m_current, t, len);
 }
@@ -1399,6 +1450,130 @@ void MainWindow::openNetwork()
             m_library->showNetwork((kind == "channels" ? "m3u:" : "rss:") + url);
         });
     dialog->open();
+}
+
+void MainWindow::openFile()
+{
+    const QString file = FileDialogs::openFile(this, tr("Open file"),
+                                               QStandardPaths::writableLocation(QStandardPaths::MoviesLocation),
+                                               mediaFilter());
+    if (!file.isEmpty())
+        playItems({file}, 0);
+}
+
+void MainWindow::openCapture()
+{
+    auto *dialog = new CaptureDeviceOverlay(this, [this](const QString &mrl, const QStringList &options) {
+        m_player->setMediaOptions(mrl, options);
+        playItems({mrl}, 0);
+        showPlayer();
+    });
+    dialog->open();
+}
+
+// "Open Location from Clipboard": copied files play at once; addresses go
+// into the network stream dialog, to check before opening.
+void MainWindow::openClipboard()
+{
+    const QMimeData *mime = QApplication::clipboard()->mimeData();
+    QStringList files, other;
+    if (mime && mime->hasUrls()) {
+        for (const QUrl &u : mime->urls())
+            (u.isLocalFile() ? files : other) << (u.isLocalFile() ? u.toLocalFile() : u.toString());
+    } else if (mime && mime->hasText()) {
+        for (QString line : mime->text().split('\n', Qt::SkipEmptyParts)) {
+            line = line.trimmed();
+            if (line.isEmpty())
+                continue;
+            const QUrl u(line);
+            if (u.isLocalFile() && QFileInfo::exists(u.toLocalFile()))
+                files << u.toLocalFile();
+            else if (line.startsWith('/') && QFileInfo::exists(line))
+                files << line;
+            else
+                other << line;
+        }
+    }
+    if (!files.isEmpty() && other.isEmpty()) {
+        playItems(files, 0);
+        return;
+    }
+    if (files.isEmpty() && other.isEmpty()) {
+        m_toast->show(tr("There's no address or file on the clipboard."), {}, {}, 2500);
+        return;
+    }
+    openNetwork();
+    if (auto *dialog = findChild<NetworkStreamOverlay *>())
+        dialog->setUrls(files + other);
+}
+
+bool MainWindow::writePlaylist(const QString &path)
+{
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly))
+        return false;
+    QTextStream out(&f);
+    auto uri = [](const QString &item) {
+        return Library::isUrl(item) ? item : QUrl::fromLocalFile(item).toString(QUrl::FullyEncoded);
+    };
+    if (path.endsWith(".xspf", Qt::CaseInsensitive)) {
+        out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            << "<playlist xmlns=\"http://xspf.org/ns/0/\" version=\"1\">\n  <trackList>\n";
+        for (const QString &item : m_queue) {
+            out << "    <track><location>" << uri(item).toHtmlEscaped() << "</location><title>"
+                << Library::displayName(item).toHtmlEscaped() << "</title>";
+            if (const qint64 ms = Durations::instance().duration(item); ms > 0)
+                out << "<duration>" << ms << "</duration>";
+            out << "</track>\n";
+        }
+        out << "  </trackList>\n</playlist>\n";
+    } else {
+        out << "#EXTM3U\n";
+        for (const QString &item : m_queue) {
+            const qint64 ms = Durations::instance().duration(item);
+            out << "#EXTINF:" << (ms > 0 ? ms / 1000 : -1) << "," << Library::displayName(item) << "\n"
+                << item << "\n";
+        }
+    }
+    return f.commit();
+}
+
+void MainWindow::savePlaylistFile()
+{
+    if (m_queue.isEmpty()) {
+        m_toast->show(tr("The queue is empty: there's nothing to save."), {}, {}, 2500);
+        return;
+    }
+    const QString name = m_current.isEmpty() ? tr("Playlist") : QFileInfo(Library::displayName(m_current)).completeBaseName();
+    QString path = FileDialogs::saveFile(this, tr("Save playlist to file"),
+                                         QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/" + name + ".m3u8",
+                                         tr("M3U playlist (*.m3u8 *.m3u);;XSPF playlist (*.xspf)"));
+    if (path.isEmpty())
+        return;
+    if (QFileInfo(path).suffix().isEmpty())
+        path += ".m3u8";
+    if (writePlaylist(path))
+        m_toast->show(tr("Saved %n item(s) to %1", nullptr, m_queue.size()).arg(QFileInfo(path).fileName()));
+    else
+        showError(tr("Couldn't save the playlist to %1.").arg(path));
+}
+
+void MainWindow::openConvert(const QStringList &files)
+{
+    QStringList items = files;
+    if (items.isEmpty() && !m_current.isEmpty() && !Disc::isDiscLocation(m_current))
+        items << m_current;
+    (new ConvertOverlay(items, this))->open();
+}
+
+void MainWindow::openStream(bool cast)
+{
+    (new StreamOverlay(m_player, Disc::isDiscLocation(m_current) ? QString() : m_current, this, cast))->open();
+}
+
+void MainWindow::showShortcuts()
+{
+    (new KeyboardShortcutsOverlay(this))->open();
 }
 
 void MainWindow::openDisc()
@@ -1516,7 +1691,9 @@ void MainWindow::dropEvent(QDropEvent *e)
 
 void MainWindow::takeSnapshot()
 {
-    const QImage img = m_video->snapshot();
+    QImage img = m_video->snapshot();
+    if (const int w = prefs().integer("snapshot/width"); w > 0 && !img.isNull() && img.width() != w)
+        img = img.scaledToWidth(w, Qt::SmoothTransformation);
     if (img.isNull()) {
         m_toast->show(tr("Nothing to snapshot"));
         return;
@@ -1524,9 +1701,10 @@ void MainWindow::takeSnapshot()
     const QString dir = prefs().string("snapshot/dir");
     QDir().mkpath(dir);
     const QString base = m_player->hasMedia() ? QFileInfo(m_player->title()).completeBaseName() : "snapshot";
-    const QString path = QString("%1/%2 %3.%4")
-                             .arg(dir, base, formatTime(m_player->time(), true).replace(':', '.'),
-                                  prefs().string("snapshot/format"));
+    const QString when = prefs().integer("snapshot/naming") == 1
+                             ? QDateTime::currentDateTime().toString("yyyy-MM-dd hh.mm.ss")
+                             : formatTime(m_player->time(), true).replace(':', '.');
+    const QString path = QString("%1/%2 %3.%4").arg(dir, base, when, prefs().string("snapshot/format"));
     if (img.save(path))
         m_toast->show(tr("Snapshot saved: %1").arg(QFileInfo(path).fileName()));
     else
@@ -1584,7 +1762,53 @@ void MainWindow::updateScreensaverInhibit()
 // ---------------------------------------------------------------------------
 // Right-click / main menu (from the "right-click menu" design)
 
+// The ways to open something, in the order of the redesign's main menu.
+void MainWindow::addOpenEntries(QMenu *menu)
+{
+    menu->addAction(m_actOpen);
+    menu->addAction(m_actOpenMany);
+    menu->addAction(m_actOpenDir);
+    addDiscEntries(menu);
+    menu->addAction(m_actOpenNet);
+    menu->addAction(m_actCapture);
+    menu->addAction(m_actClipboard);
+    QMenu *rec = menu->addMenu(theme().icon("recent", theme().accent()), tr("Open Recent"));
+    const QStringList recent = library().recent().mid(0, 15);
+    for (const QString &r : recent)
+        rec->addAction(Library::displayName(r), this, [this, r] { playItems({r}, 0); });
+    if (recent.isEmpty())
+        rec->addAction(tr("Nothing yet"))->setEnabled(false);
+    else {
+        rec->addSeparator();
+        rec->addAction(tr("Clear Recent"), this, [] { library().clearRecent(); });
+    }
+}
+
+// The title bar's menu (from the redesign video, 12:56): opening, saving and
+// the app's own windows.
 QMenu *MainWindow::buildMainMenu()
+{
+    const QColor a = theme().accent();
+    auto *menu = new QMenu(this);
+    addOpenEntries(menu);
+    menu->addSeparator();
+    m_actSavePlaylist->setEnabled(!m_queue.isEmpty());
+    menu->addAction(m_actSavePlaylist);
+    menu->addAction(m_actConvert);
+    menu->addAction(m_actStream);
+    menu->addAction(m_actShortcuts);
+    QMenu *plugins = menu->addMenu(theme().icon("puzzle", a), tr("Plugins && Extensions"));
+    plugins->addAction(theme().icon("puzzle", a), tr("Audio and Video Filters…"), this,
+                       [this] { m_settings->open(SettingsOverlay::Extensions); });
+    menu->addAction(m_actSettings);
+    menu->addAction(m_actAbout);
+    menu->addSeparator();
+    menu->addAction(m_actQuit);
+    return menu;
+}
+
+// Right-click on the video (the "right-click menu" design).
+QMenu *MainWindow::buildContextMenu()
 {
     const QColor a = theme().accent();
     auto *menu = new QMenu(this);
@@ -1769,16 +1993,7 @@ QMenu *MainWindow::buildMainMenu()
 
     // Open media
     QMenu *open = menu->addMenu(theme().icon("open-media", a), tr("Open Media"));
-    open->addAction(m_actOpen);
-    open->addAction(theme().icon("folder", a), tr("Open Folder…"), this, &MainWindow::openFolder);
-    open->addAction(m_actOpenNet);
-    addDiscEntries(open);
-    const QStringList recent = library().recent().mid(0, 10);
-    if (!recent.isEmpty()) {
-        QMenu *rec = open->addMenu(theme().icon("recent", a), tr("Recent Media"));
-        for (const QString &r : recent)
-            rec->addAction(Library::displayName(r), this, [this, r] { playItems({r}, 0); });
-    }
+    addOpenEntries(open);
 
     menu->addAction(m_actQuit);
     return menu;
@@ -2265,6 +2480,11 @@ void MainWindow::runDevScript()
                 m_quick->hide();
             else if (cmd == "settings")
                 m_settings->open(SettingsOverlay::Page(arg.toInt()));
+            else if (cmd == "pageshot") { // pageshot:path (the whole settings page showing, not just what fits)
+                for (QScrollArea *sa : m_settings->findChildren<QScrollArea *>())
+                    if (sa->isVisible() && sa->widget())
+                        sa->widget()->grab().save(arg);
+            }
             else if (cmd == "checkupdate") { // checkupdate (prints what the update check found)
                 connect(&UpdateCheck::instance(), &UpdateCheck::finished, this,
                         [](bool newer, const QString &v, const QString &page, const QString &err, bool manual) {
@@ -2276,11 +2496,53 @@ void MainWindow::runDevScript()
                     qInfo() << "cmp" << pair << UpdateCheck::compare(pair.section(' ', 0, 0), pair.section(' ', 1, 1));
             } else if (cmd == "fakeupdate") // fakeupdate:version (the notice a newer release would show)
                 emit UpdateCheck::instance().finished(true, arg, "https://github.com/" VMP_RELEASES_REPO "/releases", {}, false);
+            else if (cmd == "shortcuts")
+                showShortcuts();
+            else if (cmd == "keyset") { // keyset:id=Ctrl+K,Alt+K (empty: none; "default": the default)
+                Shortcuts::KeyMap keys = Shortcuts::instance().all();
+                const QString id = arg.section('=', 0, 0), value = arg.section('=', 1);
+                QList<QKeySequence> list;
+                if (value == "default")
+                    list = Shortcuts::instance().defaults().value(id);
+                else
+                    for (const QString &k : value.split(',', Qt::SkipEmptyParts))
+                        list << QKeySequence::fromString(k, QKeySequence::PortableText);
+                keys[id] = list;
+                Shortcuts::instance().setAll(keys);
+                qInfo() << "keyset" << id << Shortcuts::instance().text(id);
+            } else if (cmd == "capture")
+                openCapture();
+            else if (cmd == "clipboard") { // clipboard:text (put on the clipboard, then "Open Location from Clipboard")
+                QApplication::clipboard()->setText(arg);
+                openClipboard();
+            } else if (cmd == "convert") // convert:file|file
+                openConvert(arg.split('|', Qt::SkipEmptyParts));
+            else if (cmd == "transcode") { // transcode:source|profile index|destination (prints progress, then the result)
+                auto *job = new SoutJob(this);
+                const auto p = ConvertOverlay::profiles().value(arg.section('|', 1, 1).toInt());
+                QStringList options;
+                if (!p.video)
+                    options << ":no-sout-video" << ":no-sout-spu";
+                QElapsedTimer *clock = new QElapsedTimer;
+                clock->start();
+                connect(job, &SoutJob::finished, this, [job, clock](bool ok, const QString &error) {
+                    qInfo("transcode finished ok=%d %s in %lld ms", ok, qPrintable(error), clock->elapsed());
+                    delete clock;
+                    job->deleteLater();
+                });
+                qInfo("transcode start=%d sout=%s", job->start(arg.section('|', 0, 0), ConvertOverlay::soutFor(p, arg.section('|', 2), 0), options),
+                      qPrintable(ConvertOverlay::soutFor(p, arg.section('|', 2), 0)));
+            } else if (cmd == "stream" || cmd == "streamcast")
+                openStream(cmd == "streamcast");
+            else if (cmd == "about")
+                (new AboutOverlay(this))->open();
+            else if (cmd == "saveplaylist") // saveplaylist:path (.m3u8 or .xspf)
+                qInfo("saveplaylist %d", writePlaylist(arg));
             else if (cmd == "closesettings")
                 m_settings->close();
-            else if (cmd == "menu") {
+            else if (cmd == "menu" || cmd == "ctxmenu") { // menu: the title bar's; ctxmenu: right-click
                 // Render the menu offscreen (Wayland won't map unsolicited popups).
-                QMenu *menu = buildMainMenu();
+                QMenu *menu = cmd == "menu" ? buildMainMenu() : buildContextMenu();
                 menu->ensurePolished();
                 menu->adjustSize();
                 menu->grab().save(arg.isEmpty() ? "/tmp/vlct/menu.png" : arg);

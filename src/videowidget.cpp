@@ -421,6 +421,10 @@ void VideoWidget::mouseMoveEvent(QMouseEvent *e)
 
 void VideoWidget::wheelEvent(QWheelEvent *e)
 {
-    emit wheelScrolled(e->angleDelta().y());
+    const QPoint d = e->angleDelta();
+    if (qAbs(d.x()) > qAbs(d.y()))
+        emit wheelScrolledSideways(-d.x());
+    else
+        emit wheelScrolled(d.y());
     e->accept();
 }

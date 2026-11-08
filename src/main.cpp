@@ -15,6 +15,7 @@
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QSettings>
 #include <QStandardPaths>
 
 // VMP was called OmaVideo (0.2–0.4) and "VLC Redesign" before that. On first
@@ -54,6 +55,16 @@ int main(int argc, char *argv[])
     QApplication::setDesktopFileName(VMP_APP_ID);
     QApplication app(argc, argv);
     migrateOldNames();
+    {
+        // 0.6: "Load matching subtitle files" (on/off) became a choice of how
+        // closely the names must match; off stays off.
+        QSettings s;
+        if (s.contains("subs/autoload")) {
+            if (!s.value("subs/autoload").toBool() && !s.contains("subs/fuzzy"))
+                s.setValue("subs/fuzzy", 0);
+            s.remove("subs/autoload");
+        }
+    }
 
     for (const char *font : {":/fonts/Inter-Regular.ttf", ":/fonts/Inter-Medium.ttf", ":/fonts/Inter-SemiBold.ttf"})
         QFontDatabase::addApplicationFont(font);

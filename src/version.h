@@ -2,7 +2,7 @@
 
 // Single source of the app version; packaging/arch/PKGBUILD and the release
 // script read it too.
-#define VMP_VERSION "0.5.0"
+#define VMP_VERSION "0.6.0"
 #define VMP_CHANNEL "beta"
 #define VMP_VERSION_LABEL VMP_VERSION " Beta"
 #define VMP_APP_ID "vmp"

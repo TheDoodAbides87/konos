@@ -59,7 +59,25 @@ static const QHash<QString, QVariant> &defaults()
         {"audio/default", ""},           // the same for audio
         {"audio/volume", 80},
         {"audio/muted", false},
-        {"subs/autoload", true},
+        {"subs/fuzzy", 3},             // subtitle files loaded by name: 0 off … 4 exact (VLC's fuzziness)
+        {"subs/encoding", ""},         // "" automatic, or a character set for old subtitle files
+        {"subs/paths", ""},            // extra folders searched for subtitles ("" = VLC's)
+        {"controls/doubleClick", 0},   // 0 fullscreen, 1 play/pause, 2 nothing
+        {"controls/hwheel", 0},        // sideways scrolling: 0 seek, 1 volume, 2 nothing
+        {"playback/resumeRewind", 0},  // seconds to go back when resuming
+        {"playback/minResume", 0},     // minutes: shorter items aren't resumed
+        {"video/dropLate", true},
+        {"audio/timeStretch", true},
+        {"audio/replayGain", "none"},
+        {"audio/output", ""},
+        {"library/showHidden", false},
+        {"network/directories", true}, // radio-browser.info and Apple's podcast search
+        {"network/proxy", ""},
+        {"network/reconnect", false},
+        {"performance/threads", 0},
+        {"performance/fastDecode", false},
+        {"snapshot/width", 0},
+        {"snapshot/naming", 0},
         {"subs/language", ""},
         {"library/videoFolders", QStringList{QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)}},
         {"library/musicFolders", QStringList{QStandardPaths::writableLocation(QStandardPaths::MusicLocation)}},

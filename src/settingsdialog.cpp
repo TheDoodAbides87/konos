@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "shortcuts.h"
 #include "effects.h"
 #include "filedialogs.h"
 #include "fxpanels.h"
@@ -13,6 +14,8 @@
 #include "widgets.h"
 
 #include <QButtonGroup>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QFontDatabase>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -118,6 +121,37 @@ QLabel *note(const QString &text)
     l->setProperty("role", "muted");
     l->setWordWrap(true);
     return l;
+}
+
+// "Advanced Options ›" at the bottom of a page: the button shows the rest.
+QVBoxLayout *advancedSection(QVBoxLayout *page)
+{
+    page->addSpacing(18);
+    auto *button = wideButton(QObject::tr("Advanced Options  ›"));
+    button->setObjectName("AdvancedButton");
+    page->addWidget(button);
+    auto *box = new QWidget;
+    box->setObjectName("AdvancedBox");
+    auto *lay = new QVBoxLayout(box);
+    lay->setContentsMargins(0, 6, 0, 0);
+    lay->setSpacing(10);
+    box->hide();
+    page->addWidget(box);
+    QObject::connect(button, &QPushButton::clicked, box, [button, box] {
+        box->setVisible(!box->isVisible());
+        button->setText(box->isVisible() ? QObject::tr("Advanced Options  ⌄") : QObject::tr("Advanced Options  ›"));
+    });
+    return lay;
+}
+
+// A text field bound to a preference (saved when editing finishes).
+QLineEdit *prefLine(const QString &key, const QString &placeholder, QObject *ctx, int width = 330)
+{
+    auto *e = new QLineEdit(prefs().string(key));
+    e->setPlaceholderText(placeholder);
+    e->setFixedSize(width, 40);
+    QObject::connect(e, &QLineEdit::editingFinished, ctx, [e, key] { prefs().set(key, e->text().trimmed()); });
+    return e;
 }
 
 // Editable list of folders stored in a preference.
@@ -330,6 +364,7 @@ void SettingsOverlay::setPage(int page)
         if (content) {
             auto *lay = static_cast<QVBoxLayout *>(content->layout());
             for (bool audio : {true, false}) {
+                lay->addSpacing(12);
                 lay->addWidget(sectionHeading(audio ? tr("Audio filters") : tr("Video filters")));
                 auto *list = new QListWidget;
                 list->setFixedHeight(260);
@@ -338,6 +373,10 @@ void SettingsOverlay::setPage(int page)
                 for (const auto &[name, desc] : Player::filterModules(audio))
                     list->addItem(desc.isEmpty() ? name : QString("%1  —  %2").arg(name, desc));
                 lay->addWidget(list);
+            }
+            if (auto *adv = content->findChild<QWidget *>("ExtensionsAdvanced")) {
+                lay->removeWidget(adv);
+                lay->addWidget(adv); // stays last
             }
         }
     }
@@ -362,6 +401,17 @@ void SettingsOverlay::filter(const QString &text)
     }
     for (QLabel *g : m_groupLabels)
         g->setVisible(t.isEmpty());
+    // A match inside "Advanced Options" opens it.
+    for (QWidget *box : m_stack->findChildren<QWidget *>("AdvancedBox")) {
+        if (t.isEmpty())
+            continue;
+        bool inside = false;
+        for (QLabel *l : box->findChildren<QLabel *>())
+            inside = inside || l->text().contains(t, Qt::CaseInsensitive);
+        if (inside && !box->isVisible())
+            if (auto *b = box->parentWidget()->findChild<QPushButton *>("AdvancedButton"))
+                b->click();
+    }
     if (first >= 0 && !m_nav[m_stack->currentIndex()]->isVisible())
         setPage(first);
 }
@@ -513,12 +563,7 @@ QWidget *SettingsOverlay::pageGeneral()
                                          this),
                             tr("How much detail goes into the log")));
 
-    v->addSpacing(18);
-    auto *advanced = wideButton(tr("Advanced Options  ›"));
-    v->addWidget(advanced);
-    auto *advBox = new QWidget;
-    auto *advLay = new QVBoxLayout(advBox);
-    advLay->setContentsMargins(0, 6, 0, 0);
+    QVBoxLayout *advLay = advancedSection(v);
     auto *args = new QLineEdit(prefs().string("advanced/args"));
     args->setPlaceholderText("--no-audio-time-stretch --aout=pulse");
     args->setFixedHeight(40);
@@ -529,12 +574,6 @@ QWidget *SettingsOverlay::pageGeneral()
     advLay->addWidget(args);
     advLay->addWidget(apply, 0, Qt::AlignLeft);
     advLay->addWidget(note(tr("These are the same options the vlc command line accepts (see vlc --longhelp).")));
-    advBox->hide();
-    v->addWidget(advBox);
-    connect(advanced, &QPushButton::clicked, this, [advanced, advBox] {
-        advBox->setVisible(!advBox->isVisible());
-        advanced->setText(advBox->isVisible() ? tr("Advanced Options  ⌄") : tr("Advanced Options  ›"));
-    });
     connect(apply, &QPushButton::clicked, this, [args] { prefs().set("advanced/args", args->text().trimmed()); });
     return page;
 }
@@ -595,6 +634,12 @@ QWidget *SettingsOverlay::pageInterface()
     radios->addStretch();
     v->addLayout(radios);
     connect(rg, &QButtonGroup::idClicked, this, [](int i) { prefs().set("ui/thumbSize", i); });
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Mini player in the library"), prefToggle("ui/miniPlayer", this),
+                              tr("While something plays, a small player sits in a corner of the library")));
+    adv->addWidget(settingRow(tr("Queue beside the library"), prefToggle("ui/libraryQueue", this),
+                              tr("Keep the play queue open next to the library")));
     return page;
 }
 
@@ -625,6 +670,11 @@ QWidget *SettingsOverlay::pagePrivacy()
     connect(recent, &QPushButton::clicked, this, [] { library().clearRecent(); });
     connect(positions, &QPushButton::clicked, this, [] { library().clearPositions(); });
     connect(thumbs, &QPushButton::clicked, this, [] { Thumbnailer::instance().clearCache(); });
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Radio and podcast directories"), prefToggle("network/directories", this),
+                              tr("Network → Radio asks radio-browser.info for stations, and podcast search asks "
+                                 "Apple's podcast directory. Only when you open or search them.")));
     return page;
 }
 
@@ -644,32 +694,48 @@ QWidget *SettingsOverlay::pageControls()
     v->addWidget(settingRow(tr("Mouse wheel over video"),
                             prefDropdown("controls/wheel", {{tr("Volume"), 0}, {tr("Seek"), 1}, {tr("Nothing"), 2}}, this)));
     v->addSpacing(16);
+    v->addSpacing(16);
     v->addWidget(sectionHeading(tr("Keyboard shortcuts")));
-    const QList<QPair<QString, QString>> keys = {
-        {tr("Play / Pause"), "Space"},          {tr("Stop"), "S"},
-        {tr("Previous / Next item"), "P / N"},  {tr("Seek back / forward"), "← / →"},
-        {tr("Long jump"), "Ctrl + ← / →"},      {tr("Volume"), "↑ / ↓"},
-        {tr("Mute"), "M"},                      {tr("Fullscreen"), "F / F11"},
-        {tr("Exit fullscreen"), "Esc"},         {tr("Hide UI"), "Ctrl + \\"},
-        {tr("Toggle sidebar"), "Ctrl + B"},     {tr("Library / Player"), "Ctrl + L"},
-        {tr("Record"), "R"},                    {tr("Snapshot"), "Shift + S"},
-        {tr("Faster / Slower"), "] / ["},       {tr("Normal speed"), "="},
-        {tr("Open file"), "Ctrl + O"},          {tr("Open network stream"), "Ctrl + N"},
-        {tr("Settings"), "Ctrl + P"},           {tr("Quit"), "Ctrl + Q"},
-    };
-    auto *grid = new QGridLayout;
+    auto *edit = new QPushButton(tr("Change Keyboard Shortcuts…"));
+    edit->setCursor(Qt::PointingHandCursor);
+    connect(edit, &QPushButton::clicked, this, &SettingsOverlay::shortcutsRequested);
+    v->addWidget(edit, 0, Qt::AlignLeft);
+    auto *keys = new QWidget;
+    auto *grid = new QGridLayout(keys);
+    grid->setContentsMargins(0, 6, 0, 0);
     grid->setHorizontalSpacing(30);
     grid->setVerticalSpacing(10);
-    for (int i = 0; i < keys.size(); ++i) {
-        auto *name = new QLabel(keys[i].first);
-        name->setProperty("role", "dim");
-        auto *key = new QLabel(keys[i].second);
-        key->setStyleSheet(QString("background: %1; border-radius: 4px; padding: 3px 8px; font-size: 12px;")
-                               .arg(theme().pal().surface.name()));
-        grid->addWidget(name, i / 2, (i % 2) * 2);
-        grid->addWidget(key, i / 2, (i % 2) * 2 + 1, Qt::AlignLeft);
-    }
-    v->addLayout(grid);
+    auto fill = [grid] {
+        while (QLayoutItem *item = grid->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
+        int i = 0;
+        for (const Shortcuts::Def &d : Shortcuts::instance().defs()) {
+            const QString text = Shortcuts::instance().text(d.id);
+            if (text.isEmpty())
+                continue;
+            auto *name = new QLabel(d.label);
+            name->setProperty("role", "dim");
+            auto *key = new QLabel(text);
+            key->setStyleSheet(QString("background: %1; border-radius: 4px; padding: 3px 8px; font-size: 12px;")
+                                   .arg(theme().pal().surface.name()));
+            grid->addWidget(name, i / 2, (i % 2) * 2);
+            grid->addWidget(key, i / 2, (i % 2) * 2 + 1, Qt::AlignLeft);
+            ++i;
+        }
+    };
+    fill();
+    connect(&Shortcuts::instance(), &Shortcuts::changed, keys, fill);
+    v->addWidget(keys);
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Double-click on the video"),
+                              prefDropdown("controls/doubleClick",
+                                           {{tr("Fullscreen"), 0}, {tr("Play / pause"), 1}, {tr("Nothing"), 2}}, this)));
+    adv->addWidget(settingRow(tr("Scrolling sideways over the video"),
+                              prefDropdown("controls/hwheel", {{tr("Seek"), 0}, {tr("Volume"), 1}, {tr("Nothing"), 2}}, this),
+                              tr("Touchpads and tilting mouse wheels")));
     return page;
 }
 
@@ -712,6 +778,20 @@ QWidget *SettingsOverlay::pagePlayback()
                                           {"1.5×", 1.5}, {"2×", 2.0}},
                                          this),
                             tr("Speed used when the app starts")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Go back a little when resuming"),
+                              prefDropdown("playback/resumeRewind",
+                                           {{tr("No"), 0}, {tr("3 seconds"), 3}, {tr("5 seconds"), 5}, {tr("10 seconds"), 10},
+                                            {tr("30 seconds"), 30}},
+                                           this),
+                              tr("Replays the last moments so you remember where you were")));
+    adv->addWidget(settingRow(tr("Remember where you stopped in"),
+                              prefDropdown("playback/minResume",
+                                           {{tr("Everything"), 0}, {tr("Items over 1 minute"), 1},
+                                            {tr("Items over 5 minutes"), 5}, {tr("Items over 20 minutes"), 20}},
+                                           this),
+                              tr("Short items like songs can always start from the beginning")));
     return page;
 }
 
@@ -740,6 +820,10 @@ QWidget *SettingsOverlay::pageVideo()
     v->addWidget(FxPanels::imageAdjust(page));
     v->addWidget(FxPanels::crop(page));
     v->addWidget(FxPanels::colorEffects(page));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Drop late frames to keep up"), prefToggle("video/dropLate", this),
+                              tr("On a slow computer, skip frames rather than fall behind the sound")));
     return page;
 }
 
@@ -796,6 +880,18 @@ QWidget *SettingsOverlay::pageAudio()
     v->addWidget(FxPanels::compressor(page));
     v->addWidget(settingRow(tr("Volume normalization"), fxToggle(&EffectsData::normalize, Effects::AudioFilters, this),
                             tr("Keeps loudness consistent between items")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Keep the pitch when changing speed"), prefToggle("audio/timeStretch", this),
+                              tr("Off: faster sounds higher, like a tape")));
+    adv->addWidget(settingRow(tr("ReplayGain"),
+                              prefDropdown("audio/replayGain",
+                                           {{tr("Off"), "none"}, {tr("Per track"), "track"}, {tr("Per album"), "album"}}, this),
+                              tr("Evens out loudness with the ReplayGain tags in music files")));
+    adv->addWidget(settingRow(tr("Audio system"),
+                              prefDropdown("audio/output",
+                                           {{tr("Automatic"), ""}, {tr("PulseAudio / PipeWire"), "pulse"}, {tr("ALSA"), "alsa"}},
+                                           this)));
     return page;
 }
 
@@ -804,8 +900,26 @@ QWidget *SettingsOverlay::pageSubtitles()
     QWidget *page;
     auto *v = pageLayout(page);
     v->addWidget(sectionHeading(tr("Loading")));
-    v->addWidget(settingRow(tr("Load matching subtitle files automatically"), prefToggle("subs/autoload", this),
-                            tr("Looks for .srt/.ass files next to the video")));
+    // VLC's "subtitle autodetection fuzziness" (0–4), in words.
+    auto *match = prefDropdown("subs/fuzzy",
+                               {{tr("Off"), 0}, {tr("Any title"), 1}, {tr("Contains title"), 2},
+                                {tr("Title with extra characters"), 3}, {tr("Exact title match"), 4}},
+                               this);
+    v->addWidget(settingRow(tr("Load subtitle files automatically"), match));
+    auto *matchNote = note(QString());
+    auto explain = [matchNote, match] {
+        static const QStringList text = {
+            tr("Subtitle files are only added by hand."),
+            tr("Every subtitle file in the video's folder (and its Subs folders) is loaded, whatever it's called."),
+            tr("Files whose name contains the video's name anywhere, like “[EN] Movie.srt” for “Movie.mkv”."),
+            tr("Files named like the video, with or without something added: “Movie.srt” or “Movie.en.srt” for “Movie.mkv”."),
+            tr("Only a file with exactly the video's name, like “Movie.srt” for “Movie.mkv”."),
+        };
+        matchNote->setText(text.value(match->currentData().toInt()));
+    };
+    explain();
+    connect(match, &QComboBox::currentIndexChanged, matchNote, explain);
+    v->addWidget(matchNote);
     auto *lang = new QLineEdit(prefs().string("subs/language"));
     lang->setPlaceholderText("en,eng");
     lang->setFixedSize(330, 40);
@@ -922,6 +1036,27 @@ QWidget *SettingsOverlay::pageSubtitles()
                             fxToggle(&EffectsData::subEmbeddedStyle, Effects::SubtitleStyle, this)));
     v->addWidget(note(tr("Exact sizes, outline, background and position are in the Subtitles menu while "
                          "something plays.")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Text encoding"),
+                              prefDropdown("subs/encoding",
+                                           {{tr("Automatic"), ""}, {"UTF-8", "UTF-8"},
+                                            {tr("Western European (Windows-1252)"), "Windows-1252"},
+                                            {tr("Central European (Windows-1250)"), "Windows-1250"},
+                                            {tr("Cyrillic (Windows-1251)"), "Windows-1251"},
+                                            {tr("Greek (Windows-1253)"), "Windows-1253"},
+                                            {tr("Turkish (Windows-1254)"), "Windows-1254"},
+                                            {tr("Hebrew (Windows-1255)"), "Windows-1255"},
+                                            {tr("Arabic (Windows-1256)"), "Windows-1256"},
+                                            {tr("Chinese, simplified (GB18030)"), "GB18030"},
+                                            {tr("Chinese, traditional (Big5)"), "Big5"},
+                                            {tr("Japanese (Shift JIS)"), "Shift_JIS"},
+                                            {tr("Korean (EUC-KR)"), "EUC-KR"}},
+                                           this),
+                              tr("For old subtitle files whose accents or letters come out garbled")));
+    adv->addWidget(settingRow(tr("Subtitle folders"),
+                              prefLine("subs/paths", "./Subtitles, ./subtitles, ./Subs, ./subs", this),
+                              tr("Folders next to the video that are searched too, separated by commas")));
     return page;
 }
 
@@ -937,6 +1072,10 @@ QWidget *SettingsOverlay::pageLibrary()
     v->addSpacing(8);
     v->addWidget(note(tr("Folders are browsed live; nothing is imported or copied. Thumbnails are generated with "
                          "ffmpegthumbnailer or ffmpeg when installed.")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Show hidden files and folders"), prefToggle("library/showHidden", this),
+                              tr("Names starting with a dot")));
     return page;
 }
 
@@ -975,6 +1114,12 @@ QWidget *SettingsOverlay::pageNetwork()
     v->addWidget(caching);
     v->addWidget(note(tr("More caching makes unstable streams smoother at the cost of latency. "
                          "Changing it restarts the playback engine.")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("HTTP proxy"), prefLine("network/proxy", "http://proxy.example.com:3128", this),
+                              tr("Used for streams; empty uses none")));
+    adv->addWidget(settingRow(tr("Reconnect when a stream drops"), prefToggle("network/reconnect", this),
+                              tr("For HTTP streams that cut out now and then")));
     return page;
 }
 
@@ -1002,6 +1147,14 @@ QWidget *SettingsOverlay::pagePerformance()
             [caching] { prefs().set("performance/fileCaching", int(caching->value())); });
     v->addWidget(caching);
     v->addWidget(note(tr("Changes on this page restart the playback engine; the current item resumes where it was.")));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Decoding threads"),
+                              prefDropdown("performance/threads",
+                                           {{tr("Automatic"), 0}, {"1", 1}, {"2", 2}, {"4", 4}, {"8", 8}, {"16", 16}}, this),
+                              tr("How many processor cores decode video in software")));
+    adv->addWidget(settingRow(tr("Faster, rougher decoding"), prefToggle("performance/fastDecode", this),
+                              tr("Takes shortcuts the video format allows; can show small glitches")));
     return page;
 }
 
@@ -1027,6 +1180,16 @@ QWidget *SettingsOverlay::pageRecording()
     v->addWidget(sectionHeading(tr("Snapshots")));
     v->addWidget(settingRow(tr("Snapshots folder"), pathRow("snapshot/dir", true, page)));
     v->addWidget(settingRow(tr("Format"), prefDropdown("snapshot/format", {{"PNG", "png"}, {"JPEG", "jpg"}}, this)));
+
+    QVBoxLayout *adv = advancedSection(v);
+    adv->addWidget(settingRow(tr("Snapshot size"),
+                              prefDropdown("snapshot/width",
+                                           {{tr("As the video is"), 0}, {tr("1920 wide"), 1920}, {tr("1280 wide"), 1280},
+                                            {tr("640 wide"), 640}},
+                                           this)));
+    adv->addWidget(settingRow(tr("Snapshot names"),
+                              prefDropdown("snapshot/naming", {{tr("Title and time in the video"), 0}, {tr("Date and time taken"), 1}},
+                                           this)));
     return page;
 }
 
@@ -1041,5 +1204,19 @@ QWidget *SettingsOverlay::pageExtensions()
                                                 QString::fromUtf8(libvlc_get_compiler()))));
     v->addWidget(note(tr("The filter modules below come from VLC's plugin folder and power the audio and "
                          "video effects.")));
+
+    // The lists are added below this when the page first opens, so the
+    // advanced options get their own holder that stays last.
+    auto *advHolder = new QWidget;
+    advHolder->setObjectName("ExtensionsAdvanced");
+    auto *ah = new QVBoxLayout(advHolder);
+    ah->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout *adv = advancedSection(ah);
+    const QString pluginDir = qEnvironmentVariable("VLC_PLUGIN_PATH", "/usr/lib/vlc/plugins");
+    auto *open = new QPushButton(tr("Open Folder"));
+    open->setCursor(Qt::PointingHandCursor);
+    connect(open, &QPushButton::clicked, this, [pluginDir] { QDesktopServices::openUrl(QUrl::fromLocalFile(pluginDir)); });
+    adv->addWidget(settingRow(tr("VLC plugin folder"), open, pluginDir));
+    v->addWidget(advHolder);
     return page;
 }
