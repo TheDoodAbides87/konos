@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.6 (beta) — 2026-11-08
+
+### Added
+- **Edit for artists.** Right-click an artist → Edit → Edit Metadata or
+  Download Album Art, for their songs on an album (with several albums,
+  pick one, or edit them all).
+- **Edit several at once.** Select several artists or albums, right-click →
+  Edit. Editing songs from several albums together changes only the album
+  fields you fill in: the ones the songs differ on show "Several — kept as
+  they are" and stay as each song has them. (Filling in from MusicBrainz and
+  moving files about stay one album at a time.)
+
 ## 0.7.5 (beta) — 2026-11-08
 
 ### Added
