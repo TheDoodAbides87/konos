@@ -167,4 +167,45 @@ QString displayName(const QString &location)
     return tr("DVD");
 }
 
+QString copyProtection(const QString &location)
+{
+    if (!location.startsWith(QLatin1String("bluray://")))
+        return {};
+    QString root = location.mid(int(qstrlen("bluray://")));
+    if (const int hash = root.indexOf('#'); hash >= 0)
+        root.truncate(hash);
+    // A drive (/dev/sr0) is looked at where its disc is mounted.
+    if (root.startsWith(QLatin1String("/dev/"))) {
+        QString mounted;
+        for (const Drive &d : drives())
+            if (d.device == root)
+                mounted = d.mountPoint;
+        if (mounted.isEmpty())
+            return {}; // can't look inside; let the player try
+        root = mounted;
+    }
+    // The folders protected discs carry: AACS for its keys, BDSVM for BD+.
+    const QDir disc(root);
+    const bool aacs = disc.exists("AACS") || disc.exists("aacs");
+    const bool bdplus = disc.exists("BDSVM") || disc.exists("bdsvm");
+    if (aacs && bdplus)
+        return tr("AACS and BD+");
+    if (aacs)
+        return QStringLiteral("AACS");
+    if (bdplus)
+        return QStringLiteral("BD+");
+    return {};
+}
+
+QString copyProtectionMessage(const QString &location)
+{
+    return tr("This Blu-ray is copy-protected (%1), so Konos can't play it.\n\n"
+              "This is a legal limit, not a technical one: playing it would mean getting past its copy "
+              "protection, which the law in many countries doesn't allow, so Konos (like VLC) doesn't "
+              "include a way to.\n\n"
+              "Blu-rays without copy protection play normally, and a digital copy that came with the "
+              "disc plays as an ordinary file.")
+        .arg(copyProtection(location));
+}
+
 } // namespace Disc

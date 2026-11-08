@@ -1308,6 +1308,14 @@ void MainWindow::playIndex(int index)
     if (index < 0 || index >= m_queue.size())
         return;
     savePosition();
+    // A copy-protected Blu-ray isn't handed to the player: say why instead.
+    if (!Disc::copyProtection(m_queue.at(index)).isEmpty()) {
+        showError(Disc::copyProtectionMessage(m_queue.at(index)));
+        if (m_index >= m_queue.size()) // the queue was replaced: nothing in it is playing
+            m_index = -1;
+        updateQueueViews();
+        return;
+    }
     m_index = index;
     m_current = m_queue.at(index);
     qint64 start = 0;

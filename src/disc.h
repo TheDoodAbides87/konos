@@ -30,4 +30,12 @@ bool isDiscLocation(const QString &location);
 // Human-readable name for a disc location ("NEXTGEN", "Audio CD — Track 3").
 QString displayName(const QString &location);
 
+// The copy protection a Blu-ray carries: "AACS", "AACS and BD+", or empty
+// for an unprotected disc (or anything that isn't a Blu-ray). Konos doesn't
+// play protected discs: getting past the protection isn't allowed in many
+// countries, so it isn't included (as in VLC).
+QString copyProtection(const QString &location);
+// What Konos says instead of playing one.
+QString copyProtectionMessage(const QString &location);
+
 } // namespace Disc

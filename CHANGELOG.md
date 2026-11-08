@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.11 (beta) — 2026-11-08
+
+### Changed
+- **Copy-protected Blu-rays get a clear explanation** instead of VLC's
+  "unable to open the MRL" error. Konos looks for the disc's AACS or BD+
+  folders and says that it can't play the disc for a legal reason, not a
+  technical one: getting past the copy protection isn't allowed in many
+  countries, so Konos (like VLC) doesn't include a way to. Blu-rays without
+  copy protection play as before.
+
 ## 0.7.10 (beta) — 2026-11-08
 
 ### Changed
