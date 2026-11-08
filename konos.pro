@@ -24,6 +24,7 @@ omarchy: DEFINES += KONOS_OMARCHY
 
 SOURCES += \
     src/main.cpp \
+    src/albumpanel.cpp \
     src/updatecheck.cpp \
     src/netfeeds.cpp \
     src/librarydialogs.cpp \
@@ -69,6 +70,7 @@ SOURCES += \
 
 HEADERS += \
     src/appstyle.h \
+    src/albumpanel.h \
     src/updatecheck.h \
     src/netfeeds.h \
     src/librarydialogs.h \

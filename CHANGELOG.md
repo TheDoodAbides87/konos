@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **An album's songs open under it.** Clicking an album in the album grid
+  lists its songs below that row (name, artist, play and shuffle; number,
+  title and length of each song; the year). Click a song to add it to the
+  queue; right-click it (or ⋯) to Play Now or Play After. Click the album
+  again, ✕ or Esc to close it.
+- **Right-click an album → Edit**: **Edit Metadata…** (the MusicBrainz
+  editor, which can now embed the release's cover too) and **Download Album
+  Art…**, which finds covers through MusicBrainz and the Cover Art Archive,
+  or takes a picture file, and embeds it in the songs (optionally also as
+  cover.jpg). Both say that they write into the files, replacing what's
+  there for good, and ask before they do. The new cover shows at once.
+
+### Fixed
+- MusicBrainz searches try again when MusicBrainz says it's busy.
+
 ## 0.7.3 (beta) — 2026-11-08
 
 ### Changed

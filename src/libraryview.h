@@ -3,10 +3,13 @@
 #include "library.h"
 
 #include <QHash>
+#include <QPointer>
 #include <QStyledItemDelegate>
 #include <QWidget>
 
+class AlbumTracksPanel;
 class IconButton;
+class QStandardItem;
 class QHBoxLayout;
 class QLabel;
 class QLineEdit;
@@ -36,6 +39,7 @@ public:
     static QString columnTitle(Column c);
     QSize tileSize = {300, 214};
     bool square = false; // Music: tiles shaped like album art, with a detail line
+    bool freeLayout = false; // tiles laid out by their size, not a fixed grid
     void paint(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
     // Albums, artists, genres and playlists show a play and a ⋯ button on hover.
     enum TileButton { NoButton, PlayButton, MoreButton };
@@ -169,6 +173,11 @@ private:
     bool artistImages() const;
     void updateQueueCount(); // "3 items · 48m"
     bool isMusicQueue() const;
+    // Album grids: a click opens the album's songs under its row.
+    bool isAlbumTile(const QModelIndex &index) const;
+    void openAlbumPanel(const QString &albumPath);
+    void closeAlbumPanel(bool forget = true);
+    int gridColumns() const;
     bool queueDragEvent(QEvent *event);
 
     Mode m_mode;
@@ -202,6 +211,11 @@ private:
     IconButton *m_searchBtn = nullptr, *m_popBtn = nullptr;
     IconButton *m_repeatBtn = nullptr, *m_shuffleBtn = nullptr, *m_removeBtn = nullptr, *m_addBtn = nullptr;
     QWidget *m_dropLine = nullptr; // where a drop on the queue would land
+    QString m_openAlbum;                    // the album whose songs are open in the grid
+    QStandardItem *m_albumSpacer = nullptr; // the full-width row they sit on
+    QPointer<QWidget> m_albumHost;
+    QPointer<AlbumTracksPanel> m_albumPanel;
+    int m_albumAnchor = -1, m_albumWidth = 0; // where and how wide it was laid out
     QLabel *m_count;
     class Dropdown *m_artistArt = nullptr; // Artists: "Artist image" / "Album cover"
     QLabel *m_title = nullptr;

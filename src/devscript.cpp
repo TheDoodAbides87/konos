@@ -1,6 +1,7 @@
 // Developer-only UI scripting (qmake CONFIG+=devhooks): KONOS_SCRIPT="cmd:arg;wait:ms;…"
 // drives the window for tests and screenshots. Not in release builds.
 #ifdef KONOS_DEVHOOKS
+#include "albumpanel.h"
 #include "mainwindow.h"
 #include "mediadialogs.h"
 #include "shortcuts.h"
@@ -288,10 +289,30 @@ void MainWindow::runDevScript()
                     }
             } else if (cmd == "libqueue") {
                 emit m_controls->queueClicked();
+            } else if (cmd == "albumsong") { // albumsong:i[,menu] (click, or right-click, a song in the open album)
+                if (auto *panel = m_library->findChild<AlbumTracksPanel *>()) {
+                    const int i = arg.section(',', 0, 0).toInt();
+                    // Rows go down the first column, then the second.
+                    const int cols = panel->width() >= 760 ? 2 : 1;
+                    const int rows = (panel->songCount() + cols - 1) / cols;
+                    const int colWidth = (panel->width() - 48 - (cols - 1) * 48) / cols;
+                    const QPoint at(24 + (i / rows) * (colWidth + 48) + 120, 104 + (i % rows) * 40 + 20);
+                    if (arg.section(',', 1) == "menu") {
+                        onNextMenu([](QMenu *m) {
+                            for (QAction *a : m->actions())
+                                qInfo() << "menu item" << a->text();
+                        });
+                        QTest::mouseClick(panel, Qt::RightButton, Qt::NoModifier, at);
+                    } else
+                        QTest::mouseClick(panel, Qt::LeftButton, Qt::NoModifier, at);
+                } else
+                    qInfo() << "no album open";
             } else if (cmd == "rows") { // print the library's rows in order
                 if (auto *view = m_library->findChild<QListView *>("entries"))
                     for (int i = 0; i < view->model()->rowCount(); ++i)
-                        qInfo() << "row" << i << view->model()->index(i, 0).data().toString();
+                        qInfo() << "row" << i << view->model()->index(i, 0).data().toString()
+                                << view->visualRect(view->model()->index(i, 0)) << "viewport" << view->viewport()->width()
+                                << "grid" << view->gridSize() << "spacing" << view->spacing();
             } else if (cmd == "feedparse") { // feedparse:file (an RSS or M3U file on disk)
                 QFile f(arg);
                 if (!f.open(QIODevice::ReadOnly))
@@ -340,13 +361,24 @@ void MainWindow::runDevScript()
                     qInfo() << "tilebtn" << how << "selected" << view->selectionModel()->selectedIndexes().size()
                             << "queue" << m_queue.size() << "index" << m_index;
                 }
-            } else if (cmd == "libmenu") { // libmenu:Action text (run it on the selection via the right-click menu)
+            } else if (cmd == "libmenu") { // libmenu:Action text, or Submenu>Action text (on the selection via the right-click menu)
                 if (auto *view = m_library->findChild<QListView *>("entries")) {
                     const QModelIndexList sel = view->selectionModel()->selectedIndexes();
                     if (!sel.isEmpty()) {
                         onNextMenu([arg](QMenu *m) {
-                            for (QAction *a : m->actions())
-                                if (a->text() == arg) {
+                            QList<QAction *> actions = m->actions();
+                            QString want = arg;
+                            if (arg.contains('>')) {
+                                for (QAction *a : actions)
+                                    if (a->text() == arg.section('>', 0, 0) && a->menu()) {
+                                        for (QAction *sub : a->menu()->actions())
+                                            qInfo() << "submenu item" << sub->text();
+                                        actions = a->menu()->actions();
+                                    }
+                                want = arg.section('>', 1);
+                            }
+                            for (QAction *a : actions)
+                                if (a->text() == want) {
                                     QMetaObject::invokeMethod(a, &QAction::trigger, Qt::QueuedConnection);
                                     break;
                                 }
@@ -573,6 +605,17 @@ void MainWindow::runDevScript()
             else if (cmd == "closedialog") {
                 if (QWidget *w = QApplication::activeModalWidget())
                     w->close();
+            } else if (cmd == "dialogbutton") { // dialogbutton:Button text (in the open message box)
+                if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                    qInfo() << "dialog" << box->text() << box->informativeText();
+                    for (QAbstractButton *b : box->buttons())
+                        if (b->text() == arg)
+                            QMetaObject::invokeMethod(b, &QAbstractButton::click, Qt::QueuedConnection);
+                } else
+                    qInfo() << "no dialog open";
+            } else if (cmd == "dialogshot") { // dialogshot:path
+                if (QWidget *w = QApplication::activeModalWidget())
+                    w->grab().save(arg);
             } else if (cmd == "hover") {
                 // hover:0.4  synthetic pointer over the seek bar at 40 %; hover:off leaves
                 if (auto *bar = m_controls->findChild<SliderBar *>()) {

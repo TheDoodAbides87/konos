@@ -1,5 +1,6 @@
 #include "libraryview.h"
 #include "homepage.h"
+#include "albumpanel.h"
 #include "musicindex.h"
 #include "durations.h"
 #include "artistimages.h"
@@ -58,6 +59,7 @@ enum Roles {
     YearRole,   // music: release year (0 = unknown)
     ArtistRole, // music: artist (albums: album artist)
     AlbumRole,  // music: album
+    AnchorRole, // the open album's songs: the source row they follow
 };
 
 // Sort keys. Which ones a view offers depends on what it lists.
@@ -144,6 +146,15 @@ public:
 protected:
     bool lessThan(const QModelIndex &a, const QModelIndex &b) const override
     {
+        // An open album's songs sort as their row's last album, just after it.
+        const bool pa = a.data(AnchorRole).isValid(), pb = b.data(AnchorRole).isValid();
+        if (pa || pb) {
+            const QModelIndex A = pa ? sourceModel()->index(a.data(AnchorRole).toInt(), 0) : a;
+            const QModelIndex B = pb ? sourceModel()->index(b.data(AnchorRole).toInt(), 0) : b;
+            if (A == B)
+                return sortOrder() == Qt::DescendingOrder ? pa : pb;
+            return lessThan(A, B);
+        }
         const auto ka = EntryKind(a.data(KindRole).toInt());
         const auto kb = EntryKind(b.data(KindRole).toInt());
         // Actions ("Create playlist") stay on top, then folders.
@@ -383,9 +394,13 @@ bool EntryDelegate::onRecentTitle(const QRect &itemRect, const QModelIndex &inde
 
 QSize EntryDelegate::sizeHint(const QStyleOptionViewItem &, const QModelIndex &index) const
 {
+    if (index.data(AnchorRole).isValid()) // an open album's songs: as set
+        return index.data(Qt::SizeHintRole).toSize();
     if (!grid && musicQueue.on)
         return QSize(200, kQueueRow + queueHeaderHeight(index));
-    return grid ? tileSize : QSize(200, 44);
+    // Without a fixed grid (an album's songs are open), a hair narrower so
+    // the row wraps where the grid did.
+    return grid ? tileSize - QSize(freeLayout ? 4 : 0, 0) : QSize(200, 44);
 }
 
 void EntryDelegate::paintQueueRow(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const
@@ -614,6 +629,8 @@ void EntryDelegate::paint(QPainter *p, const QStyleOptionViewItem &option, const
     const bool hover = option.state & QStyle::State_MouseOver;
     const bool selected = option.state & QStyle::State_Selected;
     const bool current = index.data(Qt::UserRole + 50).toBool();
+    if (index.data(AnchorRole).isValid())
+        return; // an open album's songs: a widget of their own
     if (!grid && musicQueue.on) {
         paintQueueRow(p, option, index);
         return;
@@ -1391,6 +1408,8 @@ void LibraryView::setQueue(const QStringList &items, int current)
 void LibraryView::setNowPlaying(const QString &location)
 {
     m_nowPlaying = location;
+    if (m_albumPanel)
+        m_albumPanel->setNowPlaying(location);
     for (int i = 0; i < m_model->rowCount(); ++i) {
         QStandardItem *it = m_model->item(i);
         const bool cur = m_loc.section == Section::Queue ? it->data(OrderRole).toInt() == m_queueCurrent
@@ -1401,6 +1420,7 @@ void LibraryView::setNowPlaying(const QString &location)
 
 void LibraryView::navigate(const Location &target, bool record)
 {
+    closeAlbumPanel();
     Location loc = target;
     // A music folder (e.g. from Home) opens under Music → Folders.
     if (loc.section == Section::Music && !loc.path.isEmpty())
@@ -1461,6 +1481,7 @@ QStandardItem *LibraryView::addEntry(const LibraryEntry &e, int order)
 
 void LibraryView::reload()
 {
+    closeAlbumPanel(false); // opened again below, if the album is still here
     m_model->clear();
     {
         EntryDelegate::MusicQueue mq;
@@ -1640,6 +1661,8 @@ void LibraryView::reload()
     m_fwdBtn->setEnabled(!m_forward.isEmpty());
     rebuildHeader();
     updateGrid();
+    if (!m_openAlbum.isEmpty())
+        openAlbumPanel(m_openAlbum);
 }
 
 QString LibraryView::networkFeedKey() const
@@ -2176,6 +2199,10 @@ bool LibraryView::eventFilter(QObject *obj, QEvent *event)
     }
     if (obj == m_view && event->type() == QEvent::KeyPress) {
         auto *ke = static_cast<QKeyEvent *>(event);
+        if (ke->key() == Qt::Key_Escape && m_albumSpacer) {
+            closeAlbumPanel();
+            return true;
+        }
         if (ke->key() == Qt::Key_Backspace) {
             m_backBtn->click();
             return true;
@@ -2265,6 +2292,8 @@ void LibraryView::setSort(int key, bool desc)
 
 void LibraryView::setGridView(bool grid, bool remember)
 {
+    if (!grid)
+        closeAlbumPanel();
     m_delegate->grid = grid;
     if (remember)
         m_viewForSection[int(m_loc.section)] = grid ? 0 : 1;
@@ -2306,11 +2335,125 @@ void LibraryView::updateGrid()
     const int thumbH = square ? tileW - gap : int((tileW - gap) * 9.0 / 16.0);
     const QSize tile(tileW, thumbH + (square ? 64 : 50));
     m_delegate->square = square;
-    if (m_delegate->tileSize != tile || m_view->gridSize() != tile) {
+    if (m_albumSpacer) {
+        m_delegate->tileSize = tile;
+        m_view->setGridSize(QSize());
+        if (gridColumns() * tile.width() != m_albumWidth) // the window changed: lay the songs out again
+            QMetaObject::invokeMethod(this, [this] {
+                if (!m_openAlbum.isEmpty())
+                    openAlbumPanel(m_openAlbum);
+            }, Qt::QueuedConnection);
+    } else if (m_delegate->tileSize != tile || m_view->gridSize() != tile) {
         m_delegate->tileSize = tile;
         m_view->setGridSize(tile);
     }
     m_view->doItemsLayout();
+}
+
+int LibraryView::gridColumns() const
+{
+    const int avail = m_view->viewport()->width() - m_view->verticalScrollBar()->sizeHint().width() - 4;
+    return qMax(1, avail / qMax(1, m_delegate->tileSize.width()));
+}
+
+bool LibraryView::isAlbumTile(const QModelIndex &index) const
+{
+    if (EntryKind(index.data(KindRole).toInt()) != EntryKind::Group)
+        return false;
+    const QString path = index.data(PathRole).toString();
+    return path.startsWith("a:") || (m_loc.section == Section::Music && m_loc.music == "albums" && m_loc.group.isEmpty());
+}
+
+void LibraryView::openAlbumPanel(const QString &albumPath)
+{
+    closeAlbumPanel(false);
+    // The album's tile, and the last tile in its row: the songs go after that.
+    int row = -1;
+    for (int i = 0; i < m_proxy->rowCount(); ++i)
+        if (m_proxy->index(i, 0).data(PathRole).toString() == albumPath) {
+            row = i;
+            break;
+        }
+    if (row < 0 || !m_delegate->grid) {
+        m_openAlbum.clear();
+        return;
+    }
+    m_openAlbum = albumPath;
+    const QModelIndex tile = m_proxy->index(row, 0);
+    // Tiles laid out by their own size from now on (the songs' row is
+    // taller); then whatever shares the album's row is what the songs follow.
+    m_delegate->freeLayout = true;
+    m_view->setGridSize(QSize());
+    m_view->setUniformItemSizes(false);
+    m_view->doItemsLayout();
+    auto topOf = [this](int r) { return m_view->visualRect(m_proxy->index(r, 0)).top(); };
+    int last = row;
+    while (last + 1 < m_proxy->rowCount() && topOf(last + 1) == topOf(row))
+        ++last;
+    // As wide as a full row, however few albums there are.
+    int cols = 1;
+    while (cols < m_proxy->rowCount() && topOf(cols) == topOf(0))
+        ++cols;
+    cols = qMax(cols, gridColumns() - (cols < m_proxy->rowCount() ? 0 : 1));
+    const int anchor = m_proxy->mapToSource(m_proxy->index(last, 0)).row();
+    const int width = cols * m_delegate->tileSize.width();
+
+    auto *panel = new AlbumTracksPanel(tile.data(Qt::DisplayRole).toString(), tile.data(ArtistRole).toString(),
+                                       tracksFor(albumPath));
+    panel->setNowPlaying(m_nowPlaying);
+    connect(panel, &AlbumTracksPanel::closeRequested, this, [this] { closeAlbumPanel(); });
+    connect(panel, &AlbumTracksPanel::playAllRequested, this, [this](QStringList tracks, bool shuffle) {
+        if (shuffle)
+            std::shuffle(tracks.begin(), tracks.end(), std::mt19937(std::random_device{}()));
+        emit playRequested(tracks, 0);
+    });
+    connect(panel, &AlbumTracksPanel::enqueueRequested, this, [this](const QString &p) { emit enqueueRequested({p}); });
+    connect(panel, &AlbumTracksPanel::playNowRequested, this, [this](const QString &p) { emit enqueueAndPlayRequested({p}); });
+    connect(panel, &AlbumTracksPanel::playAfterRequested, this, [this](const QString &p) { emit playNextRequested({p}); });
+    // The same right-hand gap as the tiles, and some room below.
+    auto *host = new QWidget;
+    auto *lay = new QHBoxLayout(host);
+    lay->setContentsMargins(0, 2, 20, 22);
+    lay->addWidget(panel);
+
+    auto *spacer = new QStandardItem;
+    spacer->setFlags(Qt::ItemIsEnabled); // not selected, dragged or dropped on
+    spacer->setData(int(EntryKind::Action), KindRole);
+    spacer->setData(QStringLiteral("album-panel"), PathRole);
+    spacer->setData(1 << 30, OrderRole);
+    spacer->setData(anchor, AnchorRole);
+    spacer->setData(QSize(width - 8, panel->heightForWidth(width - 28) + 24), Qt::SizeHintRole);
+    m_model->appendRow(spacer);
+    m_albumSpacer = spacer;
+    m_albumHost = host;
+    m_albumPanel = panel;
+    m_albumAnchor = anchor;
+    m_albumWidth = gridColumns() * m_delegate->tileSize.width(); // what updateGrid() compares
+    const QModelIndex at = m_proxy->mapFromSource(spacer->index());
+    m_view->setIndexWidget(at, host);
+    m_view->doItemsLayout();
+    QMetaObject::invokeMethod(this, [this] {
+        if (m_albumSpacer)
+            m_view->scrollTo(m_proxy->mapFromSource(m_albumSpacer->index()));
+    }, Qt::QueuedConnection);
+}
+
+void LibraryView::closeAlbumPanel(bool forget)
+{
+    if (forget)
+        m_openAlbum.clear();
+    if (!m_albumSpacer)
+        return;
+    QStandardItem *spacer = m_albumSpacer;
+    m_albumSpacer = nullptr;
+    if (m_albumHost)
+        m_albumHost->deleteLater();
+    m_model->removeRow(spacer->row());
+    m_albumAnchor = -1;
+    m_albumWidth = 0;
+    m_delegate->freeLayout = false;
+    m_view->setUniformItemSizes(!m_delegate->musicQueue.on);
+    updateGrid(); // the fixed grid size again
 }
 
 QStringList LibraryView::currentPlayable(int *indexOfPath, const QString &path) const
@@ -2353,6 +2496,13 @@ void LibraryView::activate(const QModelIndex &index)
             navigate({Section::Music, {}, {}, path});
         break;
     case EntryKind::Group:
+        if (m_delegate->grid && isAlbumTile(index)) { // its songs open under it (a second click closes them)
+            if (m_openAlbum == path)
+                closeAlbumPanel();
+            else
+                openAlbumPanel(path);
+            break;
+        }
         if (path.startsWith("a:")) // an album on an artist's page
             navigate({Section::Music, {}, {}, m_loc.music, m_loc.group, path});
         else
@@ -2525,7 +2675,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
     // At the pointer, or under a tile's ⋯ button when that opened it.
     const QPoint menuAt = m_menuAt.isNull() ? m_view->viewport()->mapToGlobal(pos) : m_menuAt;
     const QModelIndex index = m_view->indexAt(pos);
-    if (!index.isValid())
+    if (!index.isValid() || index.data(AnchorRole).isValid())
         return;
     const auto kind = EntryKind(index.data(KindRole).toInt());
     const QString path = index.data(PathRole).toString();
@@ -2603,10 +2753,16 @@ void LibraryView::showContextMenu(const QPoint &pos)
                        [this, items] { emit enqueueRequested(items); });
         if (album || (artist && artistImages() && !path.mid(2).isEmpty()))
             menu.addSeparator();
-        if (album)
-            menu.addAction(theme().icon("tune", accent), tr("Edit Album Info…"), this, [this, items] {
+        if (album) {
+            // Both write into the files, and say so before they do.
+            QMenu *edit = menu.addMenu(theme().icon("edit", accent), tr("Edit"));
+            edit->addAction(theme().icon("tune", accent), tr("Edit Metadata…"), this, [this, items] {
                 (new AlbumEditorOverlay(items, window()))->open();
             });
+            edit->addAction(theme().icon("save-down", accent), tr("Download Album Art…"), this, [this, items] {
+                (new AlbumArtOverlay(items, window()))->open();
+            });
+        }
         if (artist && artistImages() && !path.mid(2).isEmpty())
             menu.addAction(theme().icon("artist", accent), tr("Choose Artist Image…"), this, [this, name = path.mid(2)] {
                 (new ArtistPictureOverlay(name, window()))->open();

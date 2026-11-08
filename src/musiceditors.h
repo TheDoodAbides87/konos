@@ -56,8 +56,18 @@ private:
     int m_generation = 0;
 };
 
-// Music → Albums → right-click → "Edit Album Info…": edit the album's tags,
-// optionally filled in from a MusicBrainz release, and write them to the files.
+// Writing to an album's files can't be undone: asks first, naming what gets
+// replaced. True to go ahead.
+bool confirmOverwrite(QWidget *parent, const QString &title, const QString &what, int songs);
+
+// Puts a cover picture into each song file, replacing any cover there, and
+// refreshes the copy Konos shows so it changes at once. folderCopy also saves
+// it as cover.jpg beside the songs. Returns an error to show, or nothing.
+QString embedAlbumArt(const QStringList &tracks, const QByteArray &image, bool folderCopy);
+
+// Music → album → right-click → Edit → "Edit Metadata…": edit the album's
+// tags, optionally filled in from a MusicBrainz release (and its cover), and
+// write them into the files.
 class AlbumEditorOverlay : public PanelOverlay {
     Q_OBJECT
 public:
@@ -77,10 +87,31 @@ private:
     QTreeWidget *m_table;
     QLineEdit *m_query;
     QListWidget *m_releases;
-    QCheckBox *m_saveCover;
+    QCheckBox *m_embedCover;
     QLabel *m_status;
     QPushButton *m_save;
     QString m_releaseId;
-    qint64 m_nextRequest = 0; // earliest time (ms since epoch) for the next request
+    int m_generation = 0;
+};
+
+// Music → album → right-click → Edit → "Download Album Art…": covers from the
+// Cover Art Archive (found through MusicBrainz), or a picture file, embedded
+// into the album's songs.
+class AlbumArtOverlay : public PanelOverlay {
+    Q_OBJECT
+public:
+    AlbumArtOverlay(const QStringList &tracks, QWidget *window);
+
+private:
+    void search();
+    void apply(const QString &urlOrFile);
+
+    QStringList m_tracks;
+    QString m_album, m_artist;
+    QLineEdit *m_query;
+    QListWidget *m_results;
+    QCheckBox *m_folderCopy;
+    QLabel *m_status;
+    QPushButton *m_use;
     int m_generation = 0;
 };
