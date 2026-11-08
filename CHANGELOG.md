@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.4 (beta) — 2026-11-08
 
 ### Added
 - **An album's songs open under it.** Clicking an album in the album grid
