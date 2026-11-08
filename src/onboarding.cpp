@@ -160,7 +160,7 @@ Onboarding::Onboarding(QWidget *window) : QWidget(window)
         auto *swatches = new AccentSwatches;
         connect(swatches, &AccentSwatches::picked, this, &Theme::pickAccent);
         l->addWidget(swatches, 0, Qt::AlignHCenter);
-        auto *note = dim(tr("Both can be changed any time in Settings → General."));
+        auto *note = dim(tr("Both can be changed any time in Settings → Interface."));
         note->setAlignment(Qt::AlignCenter);
         l->addWidget(note);
         l->addStretch();

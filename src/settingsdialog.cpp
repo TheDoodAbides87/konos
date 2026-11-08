@@ -470,20 +470,12 @@ QWidget *SettingsOverlay::pageGeneral()
 {
     QWidget *page;
     auto *v = pageLayout(page);
-    v->addWidget(sectionHeading(tr("Appearance")));
+    // Theme and accent colour are in Interface.
+    v->addWidget(sectionHeading(tr("Language")));
     auto *lang = new Dropdown;
     lang->setFixedWidth(330);
     lang->addItem(tr("English"));
     v->addWidget(settingRow(tr("Interface language"), lang));
-    auto *themeSeg = new SegmentedControl(Theme::modeNames());
-    themeSeg->setFixedWidth(330);
-    themeSeg->setCurrentIndex(theme().mode());
-    connect(themeSeg, &SegmentedControl::currentChanged, this, [](int i) { Theme::pick(Theme::Mode(i)); });
-    connect(&theme(), &Theme::changed, themeSeg, [themeSeg] { themeSeg->setCurrentIndex(theme().mode()); });
-    v->addWidget(settingRow(tr("Theme"), themeSeg));
-    auto *swatches = new AccentSwatches;
-    connect(swatches, &AccentSwatches::picked, this, &Theme::pickAccent);
-    v->addWidget(settingRow(tr("Accent color"), swatches));
 
     v->addSpacing(16);
     v->addWidget(sectionHeading(tr("Startup")));

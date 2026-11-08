@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.10 (beta) — 2026-11-08
+
+### Changed
+- Theme and accent colour are set in Settings → Interface only (they were
+  also in General, which now starts with Language).
+
 ## 0.7.9 (beta) — 2026-11-08
 
 ### Changed
