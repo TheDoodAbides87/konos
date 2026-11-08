@@ -536,6 +536,7 @@ void Player::open(const QString &location, qint64 startMs, bool startPaused)
                                     libvlc_media_parse_flag_t(libvlc_media_parse_local | libvlc_media_fetch_local),
                                     5000);
     m_pendingPause = startPaused;
+    m_pausedStart = startPaused ? startMs : 0;
     if (const QString dev = prefs().string("audio/device"); !dev.isEmpty())
         libvlc_audio_output_device_set(m_mp, nullptr, dev.toUtf8().constData());
     libvlc_media_player_play(m_mp);
@@ -564,6 +565,14 @@ void Player::restoreSessionState()
     if (m_pendingPause) {
         m_pendingPause = false;
         libvlc_media_player_set_pause(m_mp, 1);
+        // Paused at once, VLC hasn't gone to the start point yet: go there
+        // now, so the time and seek bar show where it will carry on from.
+        if (m_pausedStart > 0) {
+            libvlc_media_player_set_time(m_mp, m_pausedStart);
+            m_lastTime = m_pausedStart;
+            emit timeChanged(m_pausedStart);
+        }
+        m_pausedStart = 0;
     }
     applyAll();
 }

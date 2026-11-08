@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.9 (beta) — 2026-11-08
+
+### Changed
+- **Reopen the last queue at launch** (Settings → General, and now also
+  Playback → Queue): on, Konos opens with your queue and the song you were
+  on, paused where you stopped and ready to play; off (the default), it
+  opens fresh every time.
+
+### Fixed
+- A song reopened paused showed 0:00 until played, and closing Konos again
+  before pressing Play forgot where it had been. It now shows, and keeps,
+  the spot it will carry on from.
+
 ## 0.7.8 (beta) — 2026-11-08
 
 ### Changed

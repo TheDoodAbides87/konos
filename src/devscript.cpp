@@ -694,6 +694,8 @@ void MainWindow::runDevScript()
                 toggleRecording();
             else if (cmd == "snapshot")
                 takeSnapshot();
+            else if (cmd == "ptime") // the player's time, length and state
+                qInfo() << "ptime" << m_player->time() << m_player->length() << int(m_player->state());
             else if (cmd == "dump")
                 m_player->debugDump();
             else if (cmd == "shot")

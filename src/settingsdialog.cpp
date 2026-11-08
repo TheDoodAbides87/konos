@@ -489,8 +489,9 @@ QWidget *SettingsOverlay::pageGeneral()
     v->addWidget(sectionHeading(tr("Startup")));
     v->addWidget(settingRow(tr("Show confirmation and error dialogs"), prefToggle("startup/confirmDialogs", this),
                             tr("When off, playback errors appear as a brief notification instead of a dialog")));
-    v->addWidget(settingRow(tr("Resume last session on launch"), prefToggle("startup/restoreSession", this),
-                            tr("Reopen the queue you were playing when the app was closed")));
+    v->addWidget(settingRow(tr("Reopen the last queue at launch"), prefToggle("startup/restoreSession", this),
+                            tr("On: Konos opens with your queue and the song you were on, paused where you "
+                               "stopped and ready to play. Off: Konos opens fresh every time.")));
 
     v->addSpacing(16);
     v->addWidget(sectionHeading(tr("Updates")));
@@ -761,6 +762,8 @@ QWidget *SettingsOverlay::pagePlayback()
 
     v->addSpacing(16);
     v->addWidget(sectionHeading(tr("Queue")));
+    v->addWidget(settingRow(tr("Reopen the last queue at launch"), prefToggle("startup/restoreSession", this),
+                            tr("On: Konos opens with your queue and the song you were on, paused where you stopped. Off: it opens fresh. (Also in General.)")));
     v->addWidget(settingRow(tr("Play next item automatically"), prefToggle("playback/autoNext", this)));
     v->addWidget(settingRow(tr("Shuffle"), prefToggle("playback/shuffle", this)));
     auto *repeat = new SegmentedControl({tr("Off"), tr("One"), tr("All")});

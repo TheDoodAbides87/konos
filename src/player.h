@@ -284,6 +284,7 @@ private:
     int m_pendingAudioTrack = -2;
     int m_pendingSubTrack = -2;
     bool m_pendingPause = false;
+    qint64 m_pausedStart = 0; // opened paused part-way in: where (VLC only goes there on playing)
 
     // Frame buffers (written by the vout thread, read by the GUI thread)
     mutable QMutex m_frameMutex;
