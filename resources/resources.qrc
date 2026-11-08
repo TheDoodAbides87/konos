@@ -3,6 +3,7 @@
         <file>fonts/Inter-Regular.ttf</file>
         <file>fonts/Inter-Medium.ttf</file>
         <file>fonts/Inter-SemiBold.ttf</file>
-        <file>konos.svg</file>
+        <file>konos.png</file>
+        <file>konos-mark.png</file>
     </qresource>
 </RCC>

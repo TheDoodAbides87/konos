@@ -452,27 +452,26 @@ QIcon Theme::icon(const QString &name, const QColor &color) const
 
 void Theme::paintLogo(QPainter *p, const QRectF &r, const QColor &accent)
 {
-    // The Konos mark: a split K on a block grid. A straight stem, a one-block
-    // gap, then the two arms as a chevron meeting on the middle row. Same
-    // shape as packaging/make-icon.py, which draws the app icon (keep the two
-    // in sync).
-    constexpr int rows = 13, stemLeft = 1, stemRight = 4, gap = 1, armWidth = 4, rightEdge = 15;
-    // 13 rows of 14 used columns (1..15) fill the square; blocks stay square.
-    const qreal unit = qMin(r.width() / 14.0, r.height() / 13.0);
-    const QPointF o(r.center().x() - 8 * unit, r.center().y() - 6.5 * unit);
-    QPainterPath shape;
-    for (int i = 0; i < rows; ++i) {
-        const qreal y = o.y() + i * unit;
-        auto block = [&](int a, int b) { shape.addRect(QRectF(o.x() + a * unit, y, (b - a) * unit, unit)); };
-        block(stemLeft, stemRight);
-        const int armLeft = stemRight + gap + std::abs(i - rows / 2);
-        block(armLeft, std::min(armLeft + armWidth, rightEdge));
+    // The Konos mark in its own colours (so accent goes unused): the app icon
+    // without its tile, made by packaging/make-icon.py. Kept scaled per size,
+    // since it's drawn small in the title bar and large on the empty player.
+    Q_UNUSED(accent);
+    static const QImage mark(":/konos-mark.png");
+    static QHash<int, QPixmap> scaled;
+    const qreal side = qMin(r.width(), r.height());
+    const qreal dpr = p->device() ? p->device()->devicePixelRatioF() : 1.0;
+    const int px = qMax(1, qRound(side * dpr));
+    if (!scaled.contains(px)) {
+        if (scaled.size() > 16)
+            scaled.clear();
+        QPixmap pm = QPixmap::fromImage(mark.scaled(px, px, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        pm.setDevicePixelRatio(dpr);
+        scaled.insert(px, pm);
     }
+    const QRectF box(r.center().x() - side / 2, r.center().y() - side / 2, side, side);
     p->save();
-    p->setRenderHint(QPainter::Antialiasing, unit < 4); // crisp blocks, smoothed when tiny
-    p->setPen(Qt::NoPen);
-    p->setBrush(accent);
-    p->drawPath(shape.simplified());
+    p->setRenderHint(QPainter::SmoothPixmapTransform);
+    p->drawPixmap(box, scaled.value(px), QRectF());
     p->restore();
 }
 

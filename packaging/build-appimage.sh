@@ -91,7 +91,7 @@ linuxdeploy-x86_64.AppImage \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/$APP" \
     --desktop-file "$ROOT/packaging/$APP.desktop" \
-    --icon-file "$ROOT/resources/konos.svg" \
+    --icon-file "$ROOT/packaging/icons/256x256/konos.png" \
     --custom-apprun "$ROOT/packaging/AppRun" \
     "${DEPLOY_ARGS[@]}" \
     --plugin qt

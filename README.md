@@ -1,6 +1,6 @@
 # Konos Media Player
 
-<img src="resources/konos.svg" width="96" align="right" alt="Konos icon">
+<img src="packaging/icons/256x256/konos.png" width="96" align="right" alt="Konos icon">
 
 A desktop media player for videos, music, discs and streams.
 
@@ -21,9 +21,9 @@ Konos builds that redesign as a working player; each release works through a
 part of the video. Juxtopposed isn't involved in Konos, and any rough edges are
 Konos's own.
 
-The icon is a split K on a block grid: a stem, a gap, and chevron arms;
-`packaging/make-icon.py` draws it, and `Theme::paintLogo()` draws the same
-shape in the app.
+The icon is a play button inside a K-shaped ring. `packaging/icon-source.png`
+is the artwork; `packaging/make-icon.py` makes the icon sizes from it, and the
+mark without its tile that the app draws in its own window.
 
 Licensed under the [MIT licence](LICENSE).
 

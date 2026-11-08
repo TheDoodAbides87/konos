@@ -1,41 +1,52 @@
 #!/usr/bin/env python3
-"""Writes resources/konos.svg: the Konos mark.
+"""Makes Konos's icons from packaging/icon-source.png (the master artwork).
 
-A split K on a block grid (the same grid the Omarchy wordmark uses): a
-straight stem, a one-block gap, then the two arms as a chevron that meets in
-the middle. On the app icon, the lower leg is a second colour.
-Theme::paintLogo() draws the same shape in one colour (keep the two in sync).
+Writes:
+  packaging/icons/<n>x<n>/konos.png   the app icon at the sizes desktops use
+  resources/konos.png                 the window icon (built into the app)
+  resources/konos-mark.png            the mark alone, without its tile, for
+                                      drawing inside the app (Theme::paintLogo)
+
+Needs Pillow and NumPy. Run it again after changing the source.
 """
 import pathlib
 
-ROWS = 13           # rows of blocks; the arms meet on the middle one
-STEM = (1, 4)       # stem columns [left, right) on a 16-block grid
-GAP = 1             # empty columns between the stem and the arms
-ARM = 4             # arm width in blocks
-RIGHT = 15          # rightmost column used (exclusive)
+import numpy as np
+from PIL import Image
 
-UNIT, OFF = 14, 16  # 16 blocks of 14 px on a 256 px canvas
-TOP = (256 - ROWS * UNIT) // 2  # centred vertically
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
+TILE = np.array([2, 15, 64], np.float32)  # the tile's navy, lifted off for the mark
 
 
-def arm(r):
-    """The arm's [left, right) columns on row r."""
-    left = STEM[1] + GAP + abs(r - ROWS // 2)
-    return left, min(left + ARM, RIGHT)
+def mark(icon: Image.Image) -> Image.Image:
+    """The mark on a transparent background: the tile colour keyed out, soft
+    edges un-mixed from it so they don't keep a navy fringe."""
+    a = np.asarray(icon.convert("RGBA")).astype(np.float32)
+    rgb = a[..., :3]
+    d = np.sqrt(((rgb - TILE) ** 2).sum(-1))
+    t = np.clip((d - 28) / (95 - 28), 0, 1)
+    alpha = t * t * (3 - 2 * t) * (a[..., 3] / 255.0)
+    fg = np.clip(TILE + (rgb - TILE) / np.maximum(alpha, 0.35)[..., None], 0, 255)
+    out = Image.fromarray(np.dstack([fg, alpha * 255]).astype(np.uint8), "RGBA")
+    # Square around the mark, with a little room.
+    x0, y0, x1, y1 = out.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    side = max(x1 - x0, y1 - y0)
+    pad = int(side * 0.02)
+    cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+    half = side // 2 + pad
+    return out.crop((cx - half, cy - half, cx + half, cy + half))
 
 
-def svg(fg="#8B7CF6", leg="#3DD6C0", tile="#16141F"):
-    rects = []
-    for r in range(ROWS):
-        y = TOP + r * UNIT
-        for (a, b), colour in ((STEM, fg), (arm(r), leg if r > ROWS // 2 else fg)):
-            rects.append(f'<rect x="{OFF + a * UNIT}" y="{y}" width="{(b - a) * UNIT}" height="{UNIT}" fill="{colour}"/>')
-    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" shape-rendering="crispEdges">\n'
-            f'  <rect x="8" y="8" width="240" height="240" rx="56" fill="{tile}"/>\n'
-            "  " + "\n  ".join(rects) + "\n</svg>\n")
+def main():
+    icon = Image.open(ROOT / "packaging" / "icon-source.png").convert("RGBA")
+    for n in SIZES:
+        path = ROOT / "packaging" / "icons" / f"{n}x{n}" / "konos.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        icon.resize((n, n), Image.LANCZOS).save(path, optimize=True)
+    icon.resize((256, 256), Image.LANCZOS).save(ROOT / "resources" / "konos.png", optimize=True)
+    mark(icon).resize((512, 512), Image.LANCZOS).save(ROOT / "resources" / "konos-mark.png", optimize=True)
 
 
 if __name__ == "__main__":
-    out = pathlib.Path(__file__).resolve().parent.parent / "resources" / "konos.svg"
-    out.write_text(svg())
-    print(out)
+    main()

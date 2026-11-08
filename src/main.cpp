@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
     font.setPixelSize(13);
     font.setHintingPreference(QFont::PreferNoHinting);
     app.setFont(font);
-    app.setWindowIcon(QIcon(":/konos.svg"));
+    app.setWindowIcon(QIcon(":/konos.png"));
     app.setStyle(new AppStyle);
 
     QCommandLineParser parser;

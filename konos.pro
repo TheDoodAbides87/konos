@@ -118,8 +118,12 @@ RESOURCES += resources/resources.qrc
 target.path = /usr/bin
 desktop.path = /usr/share/applications
 desktop.files = packaging/konos.desktop
-icon.path = /usr/share/icons/hicolor/scalable/apps
-icon.files = resources/konos.svg
 license.path = /usr/share/licenses/konos
 license.files = LICENSE resources/fonts/Inter-LICENSE.txt
-INSTALLS += target desktop icon license
+INSTALLS += target desktop license
+# The app icon at each size (packaging/make-icon.py makes them).
+for(size, $$list(16 24 32 48 64 128 256 512)) {
+    eval(icon$${size}.path = /usr/share/icons/hicolor/$${size}x$${size}/apps)
+    eval(icon$${size}.files = packaging/icons/$${size}x$${size}/konos.png)
+    INSTALLS += icon$${size}
+}
