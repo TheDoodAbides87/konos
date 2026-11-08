@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.7 (beta) — 2026-11-08
+
+### Fixed
+- **Typing in Edit Metadata's song list.** The box for a number, title or
+  artist showed as an empty bar; it now shows what you type. A cell still
+  being typed in when you click Save is saved too.
+- **Group by Album Artist** no longer lists "feat." artists on their own.
+  A song with no album artist tag counts under the album artist its album's
+  other songs have, else the album's main artist (featured artists aside),
+  so "Tech N9ne feat. Krizz Kaliko" on K.O.D. is under Tech N9ne. A
+  compilation, with no main artist, keeps each song's own artist.
+
+### Changed
+- Edit Metadata fills in that album artist, so saving writes it into the
+  files and other players group them the same way.
+
 ## 0.7.6 (beta) — 2026-11-08
 
 ### Added

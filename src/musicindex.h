@@ -18,6 +18,9 @@ class MusicIndex : public QObject {
 public:
     struct Track {
         QString path, title, artist, albumArtist, album, genre, art;
+        // No album artist tag: who the album's other songs say it is, else
+        // its main artist without "feat. …" (worked out, not saved).
+        QString impliedAlbumArtist;
         int number = 0;
         int year = 0;        // release year, 0 if unknown
         qint64 duration = 0; // ms
@@ -26,7 +29,7 @@ public:
         QString displayArtist() const;
         QString displayAlbum() const;
         QString displayGenre() const;
-        QString displayAlbumArtist() const; // album artist, else the artist
+        QString displayAlbumArtist() const; // album artist, else the implied one, else the artist
         QString label() const; // "title - artist", as in the list
     };
     enum Field { Album, Artist, Genre, AlbumArtist };
@@ -77,6 +80,7 @@ private:
     void pump();
     void parsed(libvlc_media_t *media);
     static QString groupKey(const Track &t, Field field);
+    void resolveAlbumArtists(); // fills in impliedAlbumArtist
 
     libvlc_instance_t *m_vlc = nullptr;
     QHash<QString, Track> m_tracks;

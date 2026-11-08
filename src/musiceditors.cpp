@@ -532,7 +532,9 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     for (const QString &p : tracks) {
         const MusicIndex::Track *t = musicIndex().track(p);
         albums << (t ? t->album : QString());
-        albumArtists << (t ? t->albumArtist : QString());
+        // Untagged: the album artist worked out from the album, so saving
+        // writes what Konos shows (and groups by).
+        albumArtists << (t ? (t->albumArtist.isEmpty() ? t->impliedAlbumArtist : t->albumArtist) : QString());
         genres << (t ? t->genre : QString());
         years << (t && t->year ? QString::number(t->year) : QString());
         albumKeys << (t ? t->album + '\n' + t->displayAlbumArtist() : p);
@@ -562,7 +564,7 @@ AlbumEditorOverlay::AlbumEditorOverlay(const QStringList &tracks, QWidget *windo
     fillIn(m_genre, genres);
     fillIn(m_year, years);
     if (first && !m_mixed.contains(m_albumArtist) && m_albumArtist->text().isEmpty())
-        m_albumArtist->setPlaceholderText(first->artist);
+        m_albumArtist->setPlaceholderText(first->displayAlbumArtist());
     grid->addWidget(caption(tr("Album")), 0, 0);
     grid->addWidget(caption(tr("Album artist")), 0, 1);
     grid->addWidget(caption(tr("Year")), 0, 2);
@@ -823,6 +825,9 @@ void AlbumEditorOverlay::fill(const QJsonObject &release)
 
 void AlbumEditorOverlay::save()
 {
+    // A cell still being typed in counts, Enter pressed or not.
+    for (QLineEdit *editor : m_table->viewport()->findChildren<QLineEdit *>(Qt::FindDirectChildrenOnly))
+        QMetaObject::invokeMethod(m_table, "commitData", Q_ARG(QWidget *, editor));
     if (!confirmOverwrite(window(), tr("Edit Metadata"),
                           m_embedCover->isChecked() ? tr("these tags and the cover") : tr("these tags"),
                           int(m_tracks.size())))

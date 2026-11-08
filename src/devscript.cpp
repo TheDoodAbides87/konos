@@ -636,6 +636,17 @@ void MainWindow::runDevScript()
                 if (QLineEdit *e = fields.value(arg.section('=', 0, 0).toInt()))
                     e->setText(arg.section('=', 1));
                 qInfo() << "fields" << fields.size();
+            } else if (cmd == "trackedit") { // trackedit:row,column[,text] (type into a song's cell in Edit Metadata)
+                if (auto *t = findChild<QTreeWidget *>("TrackTable"))
+                    if (QTreeWidgetItem *item = t->topLevelItem(arg.section(',', 0, 0).toInt())) {
+                        const int col = arg.section(',', 1, 1).toInt();
+                        t->editItem(item, col);
+                        if (arg.count(',') >= 2)
+                            if (auto *e = t->findChild<QLineEdit *>()) {
+                                e->selectAll();
+                                QTest::keyClicks(e, arg.section(',', 2));
+                            }
+                    }
             } else if (cmd == "dialogshot") { // dialogshot:path
                 if (QWidget *w = QApplication::activeModalWidget())
                     w->grab().save(arg);

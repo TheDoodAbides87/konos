@@ -72,7 +72,62 @@ QString MusicIndex::Track::displayGenre() const
 
 QString MusicIndex::Track::displayAlbumArtist() const
 {
-    return albumArtist.isEmpty() ? displayArtist() : albumArtist;
+    return !albumArtist.isEmpty() ? albumArtist : !impliedAlbumArtist.isEmpty() ? impliedAlbumArtist : displayArtist();
+}
+
+// "Tech N9ne feat. Krizz Kaliko", "Song (ft. X)" → the main artist.
+static QString withoutFeatured(const QString &artist)
+{
+    static const QRegularExpression featured(
+        R"(\s*(?:[(\[]\s*(?:feat\.?|ft\.?|featuring)\s[^)\]]*[)\]]|\s(?:feat\.?|ft\.?|featuring)\s.*)$)",
+        QRegularExpression::CaseInsensitiveOption);
+    const QString main = QString(artist).remove(featured).trimmed();
+    return main.isEmpty() ? artist : main;
+}
+
+void MusicIndex::resolveAlbumArtists()
+{
+    // Albums as they sit on disk: the same album name in the same folder.
+    QHash<QString, QList<Track *>> albums;
+    for (Track &t : m_tracks) {
+        t.impliedAlbumArtist.clear();
+        if (!t.album.isEmpty())
+            albums[QFileInfo(t.path).absolutePath() + '\n' + t.album] << &t;
+        else if (t.albumArtist.isEmpty())
+            t.impliedAlbumArtist = withoutFeatured(t.artist);
+    }
+    for (const QList<Track *> &songs : albums) {
+        // The album artist its tagged songs give, else the artist most of its
+        // songs are by (featured artists aside). Without a majority it's a
+        // compilation: each song keeps its own artist.
+        QHash<QString, int> tagged, main;
+        for (const Track *t : songs) {
+            if (!t->albumArtist.isEmpty())
+                ++tagged[t->albumArtist];
+            else if (!t->artist.isEmpty())
+                ++main[withoutFeatured(t->artist)];
+        }
+        auto most = [](const QHash<QString, int> &counts, int *n) {
+            QString best;
+            *n = 0;
+            for (auto it = counts.begin(); it != counts.end(); ++it)
+                if (it.value() > *n || (it.value() == *n && it.key() < best)) {
+                    best = it.key();
+                    *n = it.value();
+                }
+            return best;
+        };
+        int n = 0;
+        QString who = most(tagged, &n);
+        if (who.isEmpty()) {
+            who = most(main, &n);
+            if (n * 2 <= songs.size())
+                who.clear();
+        }
+        for (Track *t : songs)
+            if (t->albumArtist.isEmpty())
+                t->impliedAlbumArtist = who.isEmpty() ? withoutFeatured(t->artist) : who;
+    }
 }
 
 QString MusicIndex::Track::label() const
@@ -91,7 +146,10 @@ MusicIndex::MusicIndex()
 {
     m_notify.setSingleShot(true);
     m_notify.setInterval(400);
-    connect(&m_notify, &QTimer::timeout, this, &MusicIndex::changed);
+    connect(&m_notify, &QTimer::timeout, this, [this] {
+        resolveAlbumArtists();
+        emit changed();
+    });
     m_save.setSingleShot(true);
     m_save.setInterval(2000);
     connect(&m_save, &QTimer::timeout, this, &MusicIndex::save);
@@ -144,6 +202,7 @@ void MusicIndex::load()
         if (!t.path.isEmpty())
             m_tracks.insert(t.path, t);
     }
+    resolveAlbumArtists();
 }
 
 void MusicIndex::save() const
@@ -353,7 +412,9 @@ QString MusicIndex::groupKey(const Track &t, Field field)
     case Album: return t.album + '\n' + t.albumArtist;
     case Artist: return t.artist;
     case Genre: return t.genre;
-    case AlbumArtist: return t.albumArtist.isEmpty() ? t.artist : t.albumArtist;
+    case AlbumArtist: return !t.albumArtist.isEmpty()        ? t.albumArtist
+                             : !t.impliedAlbumArtist.isEmpty() ? t.impliedAlbumArtist
+                                                               : t.artist;
     }
     return {};
 }
@@ -370,8 +431,8 @@ QList<MusicIndex::Group> MusicIndex::groups(Field field, const Within &within) c
             g.key = key;
             g.name = displayFor(t, field);
             g.cover = t.path;
-            g.artist = !t.albumArtist.isEmpty() ? t.albumArtist : t.artist;
-        } else if (field == Album && t.albumArtist.isEmpty() && t.artist != g.artist) {
+            g.artist = t.displayAlbumArtist();
+        } else if (field == Album && t.albumArtist.isEmpty() && t.displayAlbumArtist() != g.artist) {
             g.artist = tr("Various Artists");
         }
         // Prefer a track with a cover, then the album's first track.

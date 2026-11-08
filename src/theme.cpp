@@ -559,6 +559,7 @@ QListWidget::item, QTreeWidget::item { padding: 6px 4px; border-radius: 4px; col
 QListWidget::item:hover, QTreeWidget::item:hover { background: %hover; }
 QListWidget::item:selected, QTreeWidget::item:selected { background: %selected; color: %text; }
 QHeaderView::section { background: transparent; color: %muted; border: none; padding: 6px 4px; }
+QTreeWidget QLineEdit { padding: 0px 6px; margin: 0px; border-radius: 4px; border: 1px solid %acc; background: %input; }
 QComboBox QAbstractItemView { background: %surface; border: 1px solid %border; border-radius: 6px; padding: 4px;
                               selection-background-color: %hover; selection-color: %text; color: %dim; }
 QDialog { background: %chrome; }

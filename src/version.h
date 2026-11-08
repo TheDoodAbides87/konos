@@ -2,7 +2,7 @@
 
 // Single source of the app version; packaging/arch/PKGBUILD and the release
 // script read it too.
-#define KONOS_VERSION "0.7.6"
+#define KONOS_VERSION "0.7.7"
 #define KONOS_CHANNEL "beta"
 #define KONOS_VERSION_LABEL KONOS_VERSION " Beta"
 #define KONOS_APP_ID "konos"
